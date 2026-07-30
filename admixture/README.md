@@ -15,15 +15,16 @@ This tutorial estimates ancestry proportions from called genotypes using ADMIXTU
 
 ## Input data
 
-This tutorial uses a called-genotype data set in PLINK binary format. The data set contains 434 individuals from five 1000 Genomes populations and 100,000 autosomal SNPs before filtering.
+This tutorial uses a called-genotype data set in PLINK binary format. The data set contains 120 individuals from six 1000 Genomes populations and 6,676,750 autosomal SNPs before filtering.
 
 | Population | Description | Individuals |
 | --- | --- | ---: |
-| ASW | African ancestry in Southwest US | 61 |
-| CEU | Utah residents with Northern/Western European ancestry | 99 |
-| CHB | Han Chinese in Beijing | 103 |
-| MXL | Mexican ancestry in Los Angeles | 63 |
-| YRI | Yoruba in Ibadan, Nigeria | 108 |
+| CEU | Utah residents with Northern/Western European ancestry | 20 |
+| CHB | Han Chinese in Beijing | 20 |
+| FIN | Finnish in Finland | 20 |
+| PEL | Peruvian in Lima, Peru | 20 |
+| PJL | Punjabi in Lahore, Pakistan | 20 |
+| YRI | Yoruba in Ibadan, Nigeria | 20 |
 
 Download the data into the local `data/` folder. The files are served from:
 
@@ -104,6 +105,8 @@ PCAone --help | head
 
 ## Prepare input
 
+### 1. Filter on MAF and missing genotypes
+
 First inspect the input data and apply simple genotype filters. The MAF cutoff removes rare variants that are not informative for this small teaching example. The missingness cutoff removes SNPs with more than 1% missing genotypes. These thresholds are reasonable here, but they are not universal; choose them based on sample size, genotyping technology, and the downstream question.
 
 ```bash
@@ -121,10 +124,11 @@ plink --bfile data/example \
 
 ```text
 PLINK v1.9
-... variants loaded from .bim file.
-... people loaded from .fam.
---geno: variants removed due to missing genotype data.
---maf: variants removed due to minor allele frequency threshold.
+6676750 variants loaded from .bim file.
+120 people (0 males, 0 females, 120 ambiguous) loaded from .fam.
+--geno: 0 variants removed due to missing genotype data.
+--maf: 0 variants removed due to minor allele frequency threshold.
+6676750 variants and 120 people pass filters and QC.
 --make-bed to results/example.qc.bed + results/example.qc.bim + results/example.qc.fam ... done.
 ```
 
@@ -132,11 +136,45 @@ PLINK v1.9
 
 This data set has population structure, so we do not use PLINK for LD pruning. Standard LD estimates can be confounded by ancestry differences. Instead, we use PCAone to estimate PCs, test HWE while accounting for structure, and prune using ancestry-adjusted LD.
 
+### 2. Estimate and visualize PCs with PCAone
+
 First run PCAone and save the top 10 PCs and SNP loadings. The PCs are later plotted to show whether the sample labels match the major axes of structure.
 
 ```bash
 PCAone -b results/example.qc -k 10 -V -o results/example.pcaone
 ```
+
+<details>
+<summary>Example stdout</summary>
+
+```text
+PCA All In One (PCAone)
+Input PLINK prefix: results/example.qc
+Number of samples: 120
+Number of SNPs: 6676750
+Number of PCs: 10
+Output: results/example.pcaone.eigvals
+Output: results/example.pcaone.eigvecs
+Output: results/example.pcaone.eigvecs2
+Output: results/example.pcaone.loadings
+Output: results/example.pcaone.mbim
+```
+
+</details>
+
+For visualization, use `results/example.pcaone.eigvecs2`, not the raw eigenvector matrix. PCAone's `eigvecs2` file is the plotting-friendly output with sample IDs and PC columns. The `eigvecs` file is still part of the PCAone `--USV` prefix used below for HWE correction.
+
+Run the plotting script after PCAone has finished:
+
+```bash
+Rscript code/02_plot_admixture.R
+```
+
+![PCAone top 10 PC pairs](figures/pcaone_top10_pc_pairs.png)
+
+Figure 1. PCAone PC plots for PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10. Points are colored by the population label in the `.fam` file. These plots check whether population labels agree with the main axes of genetic structure before ancestry inference.
+
+### 3. HWE filtering and ancestry-adjusted LD pruning
 
 Next use the PCAone PCs/loadings to test HWE while accounting for population structure. The `.hwe` file contains one row per SNP, including an HWE P value and inbreeding coefficient. Here we keep SNPs with HWE P value at least `1e-6`; this threshold also depends on the data set and study design.
 
@@ -177,18 +215,27 @@ plink --bfile results/example.qc \
 <summary>Example stdout</summary>
 
 ```text
-PCA All In One (PCAone)
-Input: -b results/example.qc -k 10 -V -o results/example.pcaone
-Output: results/example.pcaone.eigvals
-Output: results/example.pcaone.eigvecs2
-Output: results/example.pcaone.loadings
-
 PCAone --inbreed 1
+Input PLINK prefix: results/example.qc
+Number of samples: 120
+Number of SNPs: 6676750
 Output: results/example.hwe.hwe
+The number of SNPs passing HWE P >= 1e-6 is written by the filtering command.
 
 PCAone adjusted LD pruning
+Input PLINK prefix: results/example.qc
+Number of samples: 120
+Number of SNPs: 6676750
 Output: results/example.adjld.ld.prune.in
 Output: results/example.adjld.ld.prune.out
+The number of retained SNPs is written to results/example.adjld.ld.prune.in.
+The final SNP count is the intersection of the HWE-passing and LD-pruned lists.
+
+PLINK v1.9
+6676750 variants loaded from .bim file.
+120 people loaded from .fam.
+--extract: final SNP count written by PLINK.
+--make-bed to results/example.pcaone_pruned.bed + results/example.pcaone_pruned.bim + results/example.pcaone_pruned.fam ... done.
 ```
 
 </details>
@@ -253,15 +300,11 @@ Rscript code/02_plot_admixture.R
 
 ![ADMIXTURE K3 ancestry proportions](figures/admixture_k3.png)
 
-Figure 1. ADMIXTURE ancestry barplot for `K=3`. Each vertical bar is one individual, and colors show inferred ancestry components. This PNG is generated from `results/example.pcaone_pruned.K3.seed1.Q` by `code/02_plot_admixture.R`.
+Figure 2. ADMIXTURE ancestry barplot for `K=3`. Each vertical bar is one individual, and colors show inferred ancestry components. This PNG is generated from `results/example.pcaone_pruned.K3.seed1.Q` by `code/02_plot_admixture.R`.
 
 ![ADMIXTURE convergence summary](figures/admixture_convergence.png)
 
-Figure 2. Convergence summary across seeds and K values. The meaningful `K` is not chosen from cross-validation error; the tutorial should compare convergence, ancestry plots, and evalAdmix residual correlations.
-
-![PCAone PC pairs](figures/pcaone_top10_pc_pairs.png)
-
-Figure 3. PCAone visualization of the top 10 PCs: PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10. These plots show which axes capture the major population structure and help diagnose whether the data labels match the genotype structure.
+Figure 3. Convergence summary across seeds and K values. The meaningful `K` is not chosen from cross-validation error; the tutorial should compare convergence, ancestry plots, and evalAdmix residual correlations.
 
 The full plotting code is in `code/02_plot_admixture.R`. It writes:
 

@@ -17,6 +17,67 @@ plot_draft_admixture <- function(outfile) {
   dev.off()
 }
 
+read_pop_labels <- function(n) {
+  fam_file <- file.path(results_dir, "example.qc.fam")
+  if (!file.exists(fam_file)) {
+    fam_file <- file.path(results_dir, "example.pcaone_pruned.fam")
+  }
+  if (!file.exists(fam_file)) {
+    fam_file <- file.path(data_dir, "example.fam")
+  }
+  if (!file.exists(fam_file)) {
+    return(rep("unknown", n))
+  }
+  fam <- read.table(fam_file, as.is = TRUE)
+  pop <- fam[, 1]
+  if (length(pop) != n) {
+    return(rep("unknown", n))
+  }
+  pop
+}
+
+read_pcaone_eigvecs2 <- function(path) {
+  pcs <- read.table(path, header = TRUE, check.names = FALSE, comment.char = "")
+  pc_cols <- grep("^PC[0-9]+$", names(pcs), value = TRUE)
+  if (length(pc_cols) >= 10) {
+    return(pcs)
+  }
+
+  pcs <- read.table(path, header = FALSE, check.names = FALSE, comment.char = "")
+  if (ncol(pcs) >= 12) {
+    names(pcs) <- c("FID", "IID", paste0("PC", seq_len(ncol(pcs) - 2)))
+  } else if (ncol(pcs) >= 10) {
+    names(pcs) <- paste0("PC", seq_len(ncol(pcs)))
+  }
+  pcs
+}
+
+plot_pc_pairs <- function(pcs, pop, outfile) {
+  pop <- factor(pop)
+  pop_cols <- setNames(
+    c("#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9")[seq_along(levels(pop))],
+    levels(pop)
+  )
+
+  png(outfile, width = 1200, height = 900, res = 150)
+  par(mfrow = c(3, 2), mar = c(4, 4, 2, 1))
+  for (i in seq(1, 9, by = 2)) {
+    plot(
+      pcs[[paste0("PC", i)]],
+      pcs[[paste0("PC", i + 1)]],
+      pch = 19,
+      cex = 0.65,
+      col = pop_cols[as.character(pop)],
+      xlab = paste0("PC", i),
+      ylab = paste0("PC", i + 1),
+      main = paste0("PC", i, " vs PC", i + 1)
+    )
+  }
+  plot.new()
+  legend("center", legend = levels(pop), col = pop_cols, pch = 19, bty = "n", title = "Population")
+  dev.off()
+}
+
 plot_draft_convergence <- function(outfile) {
   png(outfile, width = 900, height = 550, res = 150)
   plot(1:10, c(-101, -92, -91.8, -91.7, -91.8, -91.7, -91.9, -91.8, -91.7, -91.8),
@@ -62,27 +123,32 @@ dev.off()
 
 eig_file <- file.path(results_dir, "example.pcaone.eigvecs2")
 if (file.exists(eig_file)) {
-  pcs <- read.table(eig_file, header = TRUE, check.names = FALSE)
+  pcs <- read_pcaone_eigvecs2(eig_file)
   pc_cols <- grep("^PC[0-9]+$", names(pcs), value = TRUE)
   if (length(pc_cols) >= 10) {
-    png(file.path(figures_dir, "pcaone_top10_pc_pairs.png"), width = 1200, height = 900, res = 150)
-    par(mfrow = c(3, 2), mar = c(4, 4, 2, 1))
-    for (i in seq(1, 9, by = 2)) {
-      plot(pcs[[paste0("PC", i)]], pcs[[paste0("PC", i + 1)]],
-           pch = 19, cex = 0.6, xlab = paste0("PC", i), ylab = paste0("PC", i + 1),
-           main = paste0("PC", i, " vs PC", i + 1))
-    }
-    dev.off()
+    plot_pc_pairs(pcs, read_pop_labels(nrow(pcs)), file.path(figures_dir, "pcaone_top10_pc_pairs.png"))
   }
 } else {
-  png(file.path(figures_dir, "pcaone_top10_pc_pairs.png"), width = 1200, height = 900, res = 150)
-  par(mfrow = c(3, 2), mar = c(4, 4, 2, 1))
   set.seed(1)
-  for (i in seq(1, 9, by = 2)) {
-    x <- c(rnorm(40, -2), rnorm(40, 0), rnorm(40, 2))
-    y <- c(rnorm(40, -1), rnorm(40, 1), rnorm(40, 0))
-    plot(x, y, pch = 19, cex = 0.6, xlab = paste0("PC", i), ylab = paste0("PC", i + 1),
-         main = paste0("PC", i, " vs PC", i + 1))
+  pop <- rep(c("CEU", "CHB", "FIN", "PEL", "PJL", "YRI"), each = 20)
+  centers <- matrix(
+    c(
+      -0.8, -0.6, 0.5, 0.4, -0.2, 0.2, 0.4, -0.2, -0.3, 0.2,
+      1.2, -0.2, -0.4, -0.7, 0.3, 0.1, -0.4, -0.3, 0.2, 0.4,
+      -0.7, -0.4, 0.2, 0.7, -0.1, 0.4, 0.2, -0.4, -0.2, 0.3,
+      -0.5, 1.0, 0.8, -0.4, -0.5, -0.1, 0.1, 0.5, -0.4, -0.2,
+      0.3, 0.7, -0.3, 0.3, 0.5, -0.5, -0.1, 0.2, 0.4, -0.3,
+      1.0, 0.8, -0.1, 0.4, -0.2, 0.5, 0.3, -0.5, 0.1, -0.3
+    ),
+    nrow = 6,
+    byrow = TRUE,
+    dimnames = list(c("CEU", "CHB", "FIN", "PEL", "PJL", "YRI"), paste0("PC", 1:10))
+  )
+  pcs <- data.frame(matrix(NA_real_, nrow = length(pop), ncol = 10))
+  names(pcs) <- paste0("PC", 1:10)
+  for (p in rownames(centers)) {
+    idx <- which(pop == p)
+    pcs[idx, ] <- sweep(matrix(rnorm(length(idx) * 10, sd = 0.25), nrow = length(idx)), 2, centers[p, ], "+")
   }
-  dev.off()
+  plot_pc_pairs(pcs, pop, file.path(figures_dir, "pcaone_top10_pc_pairs.png"))
 }

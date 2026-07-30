@@ -3,6 +3,7 @@
 /tutorial_data/*
 !/tutorial_data/README.md
 !/tutorial_data/*/
+/tutorial_data/*/*
 !/tutorial_data/*/README.md
 **/data/
 
