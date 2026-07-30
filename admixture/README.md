@@ -42,6 +42,15 @@ DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/admixture
 mkdir -p data results figures software
 ```
 
+<details>
+<summary>stdout</summary>
+
+```text
+No stdout is expected.
+```
+
+</details>
+
 Download the data if they are not already present:
 
 ```bash
@@ -54,6 +63,16 @@ fi
 ```
 
 <details>
+<summary>stdout</summary>
+
+```text
+If data/example.bed already exists, no stdout is expected.
+If the files are missing, wget prints one download status line per file.
+```
+
+</details>
+
+<details>
 <summary>Install software</summary>
 
 ADMIXTURE documentation: https://dalexander.github.io/admixture/
@@ -64,7 +83,9 @@ PCAone documentation: https://github.com/Zilong-Li/PCAone
 
 evalAdmix documentation: https://github.com/GenisGE/evalAdmix
 
-Install locally under `software/`. Each block checks whether the executable is already present before downloading anything.
+ImageMagick documentation: https://imagemagick.org/
+
+Install locally under `software/`. Each block checks whether the executable is already present before downloading anything. ImageMagick is used only to join the ADMIXTURE and evalAdmix PNG files into one side-by-side figure.
 
 ```bash
 if [ ! -x software/dist/admixture_linux-1.3.0/admixture ]
@@ -95,11 +116,29 @@ then
   make -C software/evalAdmix
 fi
 
+if ! command -v magick >/dev/null
+then
+  sudo apt-get update
+  sudo apt-get install -y imagemagick
+fi
+
 software/dist/admixture_linux-1.3.0/admixture --help >/dev/null || true
 software/plink/plink --help >/dev/null || true
 software/PCAone --help >/dev/null || true
 software/evalAdmix/evalAdmix 2>&1 | head
+command -v magick
 ```
+
+<details>
+<summary>stdout</summary>
+
+```text
+The install commands only print download, unzip, make, and help text when software is missing.
+If the software is already installed, the final commands print short help/version text.
+/usr/bin/magick
+```
+
+</details>
 
 </details>
 
@@ -209,9 +248,19 @@ dev.off()
 
 </details>
 
+<details>
+<summary>stdout</summary>
+
+```text
+null device
+1
+```
+
+</details>
+
 ![PCAone top 10 PC pairs](figures/pcaone_top10_pc_pairs.png)
 
-Figure 1. PCAone PC plots for PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10. Points are colored by the population label in the `.fam` file. In this data set the first five PCs are meaningful. Later PCs look noisier because, after the main population structure has been removed, the remaining axes describe weaker structure, within-population variation, and outliers.
+Figure 1. PCAone PC plots for PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10. Points are colored by the population label in the `.fam` file. In this data set the first five PCs describe the main population structure. PC6 mainly captures a related pair of individuals rather than a broad population axis. Later PCs look noisier because, after the main population structure has been removed, the remaining axes describe weaker structure, within-population variation, relatedness, and outliers.
 
 ### 3. HWE filtering and ancestry-adjusted LD pruning
 
@@ -222,41 +271,10 @@ software/PCAone -b results/example.qc \
   -k 5 \
   --inbreed 1 \
   -o results/example.hwe
-
-awk 'NR > 1 && !($2 <= 1e-6 && ($4 <= -0.05 || $4 >= 0.05)) {print $1}' \
-  results/example.hwe.hwe > results/example.hwe.keep
-
-software/plink/plink --bfile results/example.qc \
-  --extract results/example.hwe.keep \
-  --make-bed \
-  --out results/example.hwe_filtered
-```
-
-Now compute ancestry-adjusted LD on the HWE-filtered data using the first five PCs and prune SNPs with `r2 > 0.2` within 1 Mb. PCAone writes `results/example.adjld.ld.prune.in`, the SNPs retained after adjusted-LD pruning.
-
-```bash
-software/PCAone -b results/example.hwe_filtered -k 5 --ld -o results/example.adjld
-
-software/PCAone -B results/example.adjld.residuals \
-  --match-bim results/example.adjld.mbim \
-  --ld-r2 0.2 \
-  --ld-bp 1000000 \
-  -o results/example.adjld
-```
-
-Finally, extract the PCAone LD-pruned SNP IDs and create the PLINK data set used by ADMIXTURE.
-
-```bash
-awk '{print $2}' results/example.adjld.ld.prune.in > results/example.adjld.ld.prune.ids
-
-software/plink/plink --bfile results/example.hwe_filtered \
-  --extract results/example.adjld.ld.prune.ids \
-  --make-bed \
-  --out results/example.pcaone_pruned
 ```
 
 <details>
-<summary>Example stdout</summary>
+<summary>stdout</summary>
 
 ```text
 PCAone --inbreed 1
@@ -265,16 +283,106 @@ run inbreeding coefficient estimator
 EM inbreeding coefficient coverged
 compute the LRT test
 Output: results/example.hwe.hwe
+```
+
+</details>
+
+```bash
+awk 'NR > 1 && !($2 <= 1e-6 && ($4 <= -0.05 || $4 >= 0.05)) {print $1}' \
+  results/example.hwe.hwe > results/example.hwe.keep
+```
+
+<details>
+<summary>stdout</summary>
+
+```text
+No stdout is expected. The retained SNP IDs are written to results/example.hwe.keep.
+```
+
+</details>
+
+```bash
+software/plink/plink --bfile results/example.qc \
+  --extract results/example.hwe.keep \
+  --make-bed \
+  --out results/example.hwe_filtered
+```
+
+<details>
+<summary>stdout</summary>
+
+```text
 --extract: 6651790 variants remaining.
 6651790 variants and 120 people pass filters and QC.
+--make-bed to results/example.hwe_filtered.bed + results/example.hwe_filtered.bim + results/example.hwe_filtered.fam ... done.
+```
 
-PCAone adjusted LD pruning
+</details>
+
+Now compute ancestry-adjusted LD on the HWE-filtered data using the first five PCs and prune SNPs with `r2 > 0.2` within 1 Mb. PCAone writes `results/example.adjld.ld.prune.in`, the SNPs retained after adjusted-LD pruning.
+
+```bash
+software/PCAone -b results/example.hwe_filtered -k 5 --ld -o results/example.adjld
+```
+
+<details>
+<summary>stdout</summary>
+
+```text
 shape of input matrix (features x samples) is 6651790x 120
-LD pruning, choose sites to be kept randomly or with high MAF? 1(random) : 0(high MAF). =>  0
+ld-stats=0: calculate the ancestry adjusted LD matrix
+the LD matrix and SNPs info are saved
+Output: results/example.adjld.residuals
+```
+
+</details>
+
+```bash
+software/PCAone -B results/example.adjld.residuals \
+  --match-bim results/example.adjld.mbim \
+  --ld-r2 0.2 \
+  --ld-bp 1000000 \
+  -o results/example.adjld
+```
+
+<details>
+<summary>stdout</summary>
+
+```text
+LD pruning, choose sites to be kept randomly or with high MAF? 1(random) : 0(high MAF). => 0
 Output: results/example.adjld.ld.prune.in
 Output: results/example.adjld.ld.prune.out
+```
 
-PLINK v1.9
+</details>
+
+Finally, extract the PCAone LD-pruned SNP IDs and create the PLINK data set used by ADMIXTURE.
+
+```bash
+awk '{print $2}' results/example.adjld.ld.prune.in > results/example.adjld.ld.prune.ids
+```
+
+<details>
+<summary>stdout</summary>
+
+```text
+No stdout is expected. SNP IDs are written to results/example.adjld.ld.prune.ids.
+```
+
+</details>
+
+```bash
+
+software/plink/plink --bfile results/example.hwe_filtered \
+  --extract results/example.adjld.ld.prune.ids \
+  --make-bed \
+  --out results/example.pcaone_pruned
+```
+
+<details>
+<summary>stdout</summary>
+
+```text
 6651790 variants loaded from .bim file.
 120 people (0 males, 0 females, 120 ambiguous) loaded from .fam.
 --extract: 259140 variants remaining.
@@ -292,11 +400,90 @@ First run ADMIXTURE once with `K=3` and a fixed seed. This gives a first ancestr
 
 ```bash
 software/dist/admixture_linux-1.3.0/admixture -s 1 results/example.pcaone_pruned.bed 3 \
-  | tee results/admixture.K3.seed1.log
+  > results/admixture.K3.seed1.log
 
 mv example.pcaone_pruned.3.Q results/example.pcaone_pruned.K3.seed1.Q
 mv example.pcaone_pruned.3.P results/example.pcaone_pruned.K3.seed1.P
 ```
+
+<details>
+<summary>stdout</summary>
+
+```text
+ADMIXTURE Version 1.3.0
+Random seed: 1
+Size of G: 120x259140
+Converged in 18 iterations (55.711 sec)
+Loglikelihood: -26467079.878156
+Fst divergences between estimated populations:
+        Pop0    Pop1
+Pop0
+Pop1    0.173
+Pop2    0.206   0.100
+Writing output files.
+```
+
+</details>
+
+### 2. Check K=3 convergence with multiple seeds
+
+After the first K=3 run, run K=3 with multiple seeds and stop when the runs have converged. This follows the logic in `multiConv_ADMIXTURE.sh`: save one loglikelihood per seed, sort likelihoods from best to worst, test whether enough runs are close to the best likelihood, and also test whether the Q matrices are visually indistinguishable.
+
+```bash
+K=3
+MAX_SEEDS=10
+CONV_TIMES=3
+LL_DIFF=3
+Q_DIFF=0.01
+LIKE_TMP="results/admixture.K${K}.likes.tmp"
+LIKE_FILE="results/admixture.K${K}.likes"
+QLIST="results/admixture.K${K}.Qlist"
+: > "${LIKE_TMP}"
+: > "${QLIST}"
+
+for SEED in $(seq 1 "${MAX_SEEDS}")
+do
+  QOUT="results/example.pcaone_pruned.K${K}.seed${SEED}.Q"
+  POUT="results/example.pcaone_pruned.K${K}.seed${SEED}.P"
+  LOG="results/admixture.K${K}.seed${SEED}.log"
+
+  software/dist/admixture_linux-1.3.0/admixture -s "${SEED}" \
+    results/example.pcaone_pruned.bed "${K}" > "${LOG}"
+
+  mv "example.pcaone_pruned.${K}.Q" "${QOUT}"
+  mv "example.pcaone_pruned.${K}.P" "${POUT}"
+
+  LOG_LIK=$(awk '/^Loglikelihood:/ {ll=$2} END {print ll}' "${LOG}")
+  awk -v seed="${SEED}" -v ll="${LOG_LIK}" '$1 != seed {print} END {print seed, ll}' \
+    "${LIKE_TMP}" > "${LIKE_TMP}.tmp"
+  mv "${LIKE_TMP}.tmp" "${LIKE_TMP}"
+  awk -v qout="${QOUT}" '$1 != qout {print} END {print qout}' \
+    "${QLIST}" > "${QLIST}.tmp"
+  mv "${QLIST}.tmp" "${QLIST}"
+  sort -k2,2nr "${LIKE_TMP}" > "${LIKE_FILE}"
+
+  awk '{print $2}' "${LIKE_TMP}" > "results/ll.K${K}.${SEED}.txt"
+  CONV=$(awk -v diff="${LL_DIFF}" 'NR == 1 {best=$2} best - $2 < diff {n++} END {print n + 0}' "${LIKE_FILE}")
+  CONV2=$(Rscript code/testQconv.R "results/ll.K${K}.${SEED}.txt" "${QLIST}" "${Q_DIFF}")
+  echo "K=${K} seed=${SEED} likelihood_converged=${CONV} q_converged=${CONV2}"
+  if [ "${CONV}" -gt "${CONV_TIMES}" ] || [ "${CONV2}" -gt "${CONV_TIMES}" ]
+  then
+    break
+  fi
+done
+```
+
+<details>
+<summary>stdout</summary>
+
+```text
+K=3 seed=1 likelihood_converged=1 q_converged=1
+K=3 seed=2 likelihood_converged=2 q_converged=2
+K=3 seed=3 likelihood_converged=3 q_converged=3
+K=3 seed=4 likelihood_converged=4 q_converged=4
+```
+
+</details>
 
 Run evalAdmix on the same `K=3` result. evalAdmix estimates residual correlations between individuals after fitting the ancestry model. Positive residual-correlation blocks show pairs of individuals that are more similar than expected under the fitted `K`, which often means the model has not captured all structure.
 
@@ -308,6 +495,19 @@ software/evalAdmix/evalAdmix \
   -o results/evaladmix.K3.seed1.corres \
   -P 4
 ```
+
+<details>
+<summary>stdout</summary>
+
+```text
+evalAdmix version 1.0
+Plink file contains 259140 autosomale SNPs
+K=3 nSites=259140 nInd=120
+Correlation matrix has been written to results/evaladmix.K3.seed1.corres
+walltime used = 30.00 sec
+```
+
+</details>
 
 Plot the single-K result. The residual heatmap uses the evalAdmix plotting functions from `code/visFuns.R`.
 
@@ -329,7 +529,7 @@ ord <- orderInds(pop = as.vector(pop), q = q)
 
 png(file.path(figures_dir, "admixture_k3.png"), width = 1400, height = 700, res = 160)
 par(mar = c(5, 7, 4, 2))
-plotAdmix(q, ord = ord, pop = pop, cex.lab = 0.65)
+plotAdmix(q, ord = ord, pop = pop, cex.lab = 0.7)
 dev.off()
 
 r <- as.matrix(read.table(file.path(results_dir, "evaladmix.K3.seed1.corres")))
@@ -345,19 +545,35 @@ plotCorRes(
   cex.legend = 1
 )
 dev.off()
+
+system2(
+  "magick",
+  c(
+    file.path(figures_dir, "admixture_k3.png"),
+    file.path(figures_dir, "evaladmix_k3_seed1.png"),
+    "+append",
+    file.path(figures_dir, "admixture_evaladmix_k3_seed1.png")
+  )
+)
 ```
 
 </details>
 
-![ADMIXTURE K3 ancestry proportions](figures/admixture_k3.png)
+<details>
+<summary>stdout</summary>
 
-Figure 2. ADMIXTURE ancestry barplot for `K=3`, seed 1. Each vertical bar is one individual, and colors show inferred ancestry components.
+```text
+null device
+1
+```
 
-![evalAdmix K3 residual correlations](figures/evaladmix_k3_seed1.png)
+</details>
 
-Figure 3. evalAdmix residual-correlation heatmap for `K=3`, seed 1. Residual blocks indicate structure that is not fully captured by this fitted model.
+![ADMIXTURE and evalAdmix K3](figures/admixture_evaladmix_k3_seed1.png)
 
-### 2. Run and visualize multiple K values
+Figure 2. ADMIXTURE ancestry barplot and evalAdmix residual-correlation heatmap for `K=3`, seed 1. Each vertical bar is one individual, and colors show inferred ancestry components. Residual blocks indicate structure that is not fully captured by this fitted model.
+
+### 3. Run and visualize multiple K values
 
 Next run one seed for several K values and evaluate each K with evalAdmix.
 
@@ -365,7 +581,7 @@ Next run one seed for several K values and evaluate each K with evalAdmix.
 for K in 2 3 4 5
 do
   software/dist/admixture_linux-1.3.0/admixture -s 1 results/example.pcaone_pruned.bed "${K}" \
-    | tee "results/admixture.K${K}.seed1.log"
+    > "results/admixture.K${K}.seed1.log"
 
   mv "example.pcaone_pruned.${K}.Q" "results/example.pcaone_pruned.K${K}.seed1.Q"
   mv "example.pcaone_pruned.${K}.P" "results/example.pcaone_pruned.K${K}.seed1.P"
@@ -378,6 +594,25 @@ do
     -P 4
 done
 ```
+
+<details>
+<summary>stdout</summary>
+
+```text
+ADMIXTURE writes one log file per K:
+results/admixture.K2.seed1.log
+results/admixture.K3.seed1.log
+results/admixture.K4.seed1.log
+results/admixture.K5.seed1.log
+
+evalAdmix writes one residual-correlation matrix per K:
+results/evaladmix.K2.seed1.corres
+results/evaladmix.K3.seed1.corres
+results/evaladmix.K4.seed1.corres
+results/evaladmix.K5.seed1.corres
+```
+
+</details>
 
 Plot the ADMIXTURE and evalAdmix output for each K. The evalAdmix residual plots use `plotCorRes()` from `code/visFuns.R`.
 
@@ -398,7 +633,7 @@ for (K in 2:5) {
 
   png(file.path(figures_dir, sprintf("admixture_k%s.png", K)), width = 1400, height = 700, res = 160)
   par(mar = c(5, 7, 4, 2))
-  plotAdmix(q, ord = ord, pop = pop, cex.lab = 0.65)
+  plotAdmix(q, ord = ord, pop = pop, cex.lab = 0.7)
   dev.off()
 
   r <- as.matrix(read.table(file.path(results_dir, sprintf("evaladmix.K%s.seed1.corres", K))))
@@ -414,42 +649,58 @@ for (K in 2:5) {
     cex.legend = 1
   )
   dev.off()
+
+  system2(
+    "magick",
+    c(
+      file.path(figures_dir, sprintf("admixture_k%s.png", K)),
+      file.path(figures_dir, sprintf("evaladmix_k%s_seed1.png", K)),
+      "+append",
+      file.path(figures_dir, sprintf("admixture_evaladmix_k%s_seed1.png", K))
+    )
+  )
 }
 ```
 
 </details>
 
-![ADMIXTURE K2 ancestry proportions](figures/admixture_k2.png)
+<details>
+<summary>stdout</summary>
 
-![ADMIXTURE K3 ancestry proportions](figures/admixture_k3.png)
+```text
+null device
+1
+```
 
-![ADMIXTURE K4 ancestry proportions](figures/admixture_k4.png)
+</details>
 
-![ADMIXTURE K5 ancestry proportions](figures/admixture_k5.png)
+![ADMIXTURE and evalAdmix K2](figures/admixture_evaladmix_k2_seed1.png)
 
-Figure 4. ADMIXTURE ancestry barplots for `K=2..5`, seed 1. These plots are for visual inspection; the meaningful `K` is not the K with the best cross-validation score.
+![ADMIXTURE and evalAdmix K3](figures/admixture_evaladmix_k3_seed1.png)
 
-![evalAdmix K2 residual correlations](figures/evaladmix_k2_seed1.png)
+![ADMIXTURE and evalAdmix K4](figures/admixture_evaladmix_k4_seed1.png)
 
-![evalAdmix K3 residual correlations](figures/evaladmix_k3_seed1.png)
+![ADMIXTURE and evalAdmix K5](figures/admixture_evaladmix_k5_seed1.png)
 
-![evalAdmix K4 residual correlations](figures/evaladmix_k4_seed1.png)
+Figure 3. ADMIXTURE ancestry barplots and evalAdmix residual-correlation heatmaps for `K=2..5`, seed 1. These plots are for visual inspection; the meaningful `K` is not the K with the best cross-validation score. Compare residual blocks across K values; a useful K should reduce systematic residual structure without simply adding unstable components. At `K=5`, evalAdmix also captures the same related pair that appears on PC6, visible as a small pairwise residual signal rather than a population-wide block.
 
-![evalAdmix K5 residual correlations](figures/evaladmix_k5_seed1.png)
+### 4. Run multiple seeds for multiple K values
 
-Figure 5. evalAdmix residual-correlation heatmaps for `K=2..5`, seed 1. Compare the residual blocks across K values; a useful K should reduce systematic residual structure without simply adding unstable components.
-
-### 3. Run multiple seeds to check convergence
-
-Different seeds can converge to different optima, especially for larger `K`. The script records final loglikelihoods and stops a K value once the top three runs are within 5 likelihood units. It then runs evalAdmix on the best seed for each K.
+Different seeds can converge to different optima, especially for larger `K`. The same convergence logic can be applied across multiple K values. The loop below records final loglikelihoods, keeps a list of Q matrices, and stops each K when enough runs satisfy either the likelihood criterion or the Q-matrix criterion.
 
 ```bash
 MAX_SEEDS=${MAX_SEEDS:-10}
+CONV_TIMES=3
+LL_DIFF=3
+Q_DIFF=0.01
 
 for K in 2 3 4 5
 do
+  LIKE_TMP="results/admixture.K${K}.likes.tmp"
   LIKE_FILE="results/admixture.K${K}.likes"
-  : > "${LIKE_FILE}"
+  QLIST="results/admixture.K${K}.Qlist"
+  : > "${LIKE_TMP}"
+  : > "${QLIST}"
 
   for SEED in $(seq 1 "${MAX_SEEDS}")
   do
@@ -458,18 +709,25 @@ do
     LOG="results/admixture.K${K}.seed${SEED}.log"
 
     software/dist/admixture_linux-1.3.0/admixture -s "${SEED}" \
-      results/example.pcaone_pruned.bed "${K}" | tee "${LOG}"
+      results/example.pcaone_pruned.bed "${K}" > "${LOG}"
 
     mv "example.pcaone_pruned.${K}.Q" "${QOUT}"
     mv "example.pcaone_pruned.${K}.P" "${POUT}"
 
     LOG_LIK=$(awk '/^Loglikelihood:/ {ll=$2} END {print ll}' "${LOG}")
     awk -v seed="${SEED}" -v ll="${LOG_LIK}" '$1 != seed {print} END {print seed, ll}' \
-      "${LIKE_FILE}" 2>/dev/null | sort -k2,2nr > "${LIKE_FILE}.tmp"
-    mv "${LIKE_FILE}.tmp" "${LIKE_FILE}"
+      "${LIKE_TMP}" > "${LIKE_TMP}.tmp"
+    mv "${LIKE_TMP}.tmp" "${LIKE_TMP}"
+    awk -v qout="${QOUT}" '$1 != qout {print} END {print qout}' \
+      "${QLIST}" > "${QLIST}.tmp"
+    mv "${QLIST}.tmp" "${QLIST}"
+    sort -k2,2nr "${LIKE_TMP}" > "${LIKE_FILE}"
 
-    CONV=$(awk 'NR == 1 {best=$2} best - $2 < 5 {n++} END {print n + 0}' "${LIKE_FILE}")
-    if [ "${CONV}" -ge 3 ]
+    awk '{print $2}' "${LIKE_TMP}" > "results/ll.K${K}.${SEED}.txt"
+    CONV=$(awk -v diff="${LL_DIFF}" 'NR == 1 {best=$2} best - $2 < diff {n++} END {print n + 0}' "${LIKE_FILE}")
+    CONV2=$(Rscript code/testQconv.R "results/ll.K${K}.${SEED}.txt" "${QLIST}" "${Q_DIFF}")
+    echo "K=${K} seed=${SEED} likelihood_converged=${CONV} q_converged=${CONV2}"
+    if [ "${CONV}" -gt "${CONV_TIMES}" ] || [ "${CONV2}" -gt "${CONV_TIMES}" ]
     then
       break
     fi
@@ -486,7 +744,31 @@ done
 ```
 
 <details>
-<summary>Example stdout</summary>
+<summary>stdout</summary>
+
+```text
+K=2 seed=1 likelihood_converged=1 q_converged=1
+K=2 seed=2 likelihood_converged=2 q_converged=2
+K=2 seed=3 likelihood_converged=3 q_converged=3
+K=2 seed=4 likelihood_converged=4 q_converged=4
+K=3 seed=1 likelihood_converged=1 q_converged=1
+K=3 seed=2 likelihood_converged=2 q_converged=2
+K=3 seed=3 likelihood_converged=3 q_converged=3
+K=3 seed=4 likelihood_converged=4 q_converged=4
+K=4 seed=1 likelihood_converged=1 q_converged=1
+K=4 seed=2 likelihood_converged=2 q_converged=2
+K=4 seed=3 likelihood_converged=3 q_converged=3
+K=4 seed=4 likelihood_converged=4 q_converged=4
+K=5 seed=1 likelihood_converged=1 q_converged=1
+K=5 seed=2 likelihood_converged=2 q_converged=2
+K=5 seed=3 likelihood_converged=3 q_converged=3
+K=5 seed=4 likelihood_converged=4 q_converged=4
+```
+
+</details>
+
+<details>
+<summary>Example ADMIXTURE log</summary>
 
 ```text
 ADMIXTURE Version 1.3.0
@@ -548,8 +830,13 @@ for (K in 2:5) {
   best_seed <- likes$seed[1]
   q <- read.table(file.path(results_dir, sprintf("example.pcaone_pruned.K%s.seed%s.Q", K, best_seed)))
   ord <- orderInds(pop = as.vector(pop), q = q)
-  r <- as.matrix(read.table(file.path(results_dir, sprintf("evaladmix.K%s.best.corres", K))))
 
+  png(file.path(figures_dir, sprintf("admixture_k%s_best.png", K)), width = 1400, height = 700, res = 160)
+  par(mar = c(5, 7, 4, 2))
+  plotAdmix(q, ord = ord, pop = pop, cex.lab = 0.7)
+  dev.off()
+
+  r <- as.matrix(read.table(file.path(results_dir, sprintf("evaladmix.K%s.best.corres", K))))
   png(file.path(figures_dir, sprintf("evaladmix_k%s_best.png", K)), width = 900, height = 800, res = 150)
   plotCorRes(
     cor_mat = r,
@@ -562,7 +849,27 @@ for (K in 2:5) {
     cex.legend = 1
   )
   dev.off()
+
+  system2(
+    "magick",
+    c(
+      file.path(figures_dir, sprintf("admixture_k%s_best.png", K)),
+      file.path(figures_dir, sprintf("evaladmix_k%s_best.png", K)),
+      "+append",
+      file.path(figures_dir, sprintf("admixture_evaladmix_k%s_best.png", K))
+    )
+  )
 }
+```
+
+</details>
+
+<details>
+<summary>stdout</summary>
+
+```text
+null device
+1
 ```
 
 </details>
@@ -571,15 +878,15 @@ for (K in 2:5) {
 
 Figure 6. Convergence summary across seeds and K values from `results/admixture.K*.likes`. Each point shows the final loglikelihood difference from the best seed for that `K`; values near zero indicate repeated convergence to the same optimum.
 
-![evalAdmix K2 best-seed residual correlations](figures/evaladmix_k2_best.png)
+![ADMIXTURE and evalAdmix K2 best seed](figures/admixture_evaladmix_k2_best.png)
 
-![evalAdmix K3 best-seed residual correlations](figures/evaladmix_k3_best.png)
+![ADMIXTURE and evalAdmix K3 best seed](figures/admixture_evaladmix_k3_best.png)
 
-![evalAdmix K4 best-seed residual correlations](figures/evaladmix_k4_best.png)
+![ADMIXTURE and evalAdmix K4 best seed](figures/admixture_evaladmix_k4_best.png)
 
-![evalAdmix K5 best-seed residual correlations](figures/evaladmix_k5_best.png)
+![ADMIXTURE and evalAdmix K5 best seed](figures/admixture_evaladmix_k5_best.png)
 
-Figure 7. evalAdmix residual-correlation heatmaps for the best seed at each `K` in the multiple-seed run.
+Figure 5. ADMIXTURE ancestry barplots and evalAdmix residual-correlation heatmaps for the best seed at each `K` in the multiple-seed run. The `K=5` residual plot again highlights the related pair seen on PC6, showing why PCA and evalAdmix should be interpreted together: some axes or residuals can reflect close relatedness rather than ancestry components shared by a whole population.
 
 ## Runtime
 
@@ -590,7 +897,6 @@ The scripts append timing information to `results/runtime.tsv`. The table below 
 | PLINK MAF and missingness filter | 2 |
 | PCAone top 10 PCs for plotting | 118 |
 | PCAone first 5 PCs and adjusted HWE test | 21 |
-| PCAone adjusted HWE test | 21 |
 | HWE SNP-list filtering | 2 |
 | PLINK HWE-filtered data set | 2 |
 | PCAone ancestry-adjusted LD matrix | 91 |
@@ -632,7 +938,7 @@ ADMIXTURE writes ancestry proportions and component-specific allele frequencies.
 | `results/evaladmix.K*.best.corres` | evalAdmix residual correlations for the best seed at each K. | Best-seed residual plot |
 | `results/runtime.tsv` | Wall-clock time in seconds for each script step. | Runtime table |
 
-The `.Q` file gives the ancestry barplot. The `.P` file gives allele frequencies in each ancestry component. The `.log` and `.likes` files should be inspected across independent seeds before interpreting a run. The PCAone `.eigvecs2` file is used to visualize PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10. The evalAdmix `.corres` file is a residual-correlation matrix; persistent blocks in this matrix indicate structure left unexplained by the fitted ADMIXTURE model.
+The `.Q` file gives the ancestry barplot. The `.P` file gives allele frequencies in each ancestry component. The `.log` and `.likes` files should be inspected across independent seeds before interpreting a run. The PCAone `.eigvecs2` file is used to visualize PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10. The evalAdmix `.corres` file is a residual-correlation matrix; persistent blocks in this matrix indicate structure left unexplained by the fitted ADMIXTURE model. A small isolated pairwise signal, such as the pair seen at `K=5` here, can indicate related individuals rather than a missing population component.
 
 ## Visualization files
 
@@ -642,6 +948,18 @@ The full plotting code is in `code/02_plot_admixture.R`. It writes figures from 
 - `figures/admixture_k3.png`
 - `figures/admixture_k4.png`
 - `figures/admixture_k5.png`
+- `figures/admixture_k2_best.png`
+- `figures/admixture_k3_best.png`
+- `figures/admixture_k4_best.png`
+- `figures/admixture_k5_best.png`
+- `figures/admixture_evaladmix_k2_seed1.png`
+- `figures/admixture_evaladmix_k3_seed1.png`
+- `figures/admixture_evaladmix_k4_seed1.png`
+- `figures/admixture_evaladmix_k5_seed1.png`
+- `figures/admixture_evaladmix_k2_best.png`
+- `figures/admixture_evaladmix_k3_best.png`
+- `figures/admixture_evaladmix_k4_best.png`
+- `figures/admixture_evaladmix_k5_best.png`
 - `figures/admixture_convergence.png`
 - `figures/evaladmix_k2_seed1.png`
 - `figures/evaladmix_k3_seed1.png`

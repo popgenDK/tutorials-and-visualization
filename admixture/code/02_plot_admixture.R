@@ -183,7 +183,53 @@ plot_evaladmix <- function(k, seed = 1, suffix = paste0("seed", seed)) {
   TRUE
 }
 
-plot_admixture_q <- function(k, seed = 1) {
+resolve_best_seed <- function(k, seed, suffix) {
+  if (suffix != "best") {
+    return(seed)
+  }
+  likes_file <- file.path(results_dir, sprintf("admixture.K%s.likes", k))
+  if (!file.exists(likes_file)) {
+    return(seed)
+  }
+  likes <- read.table(likes_file, col.names = c("seed", "loglikelihood"))
+  if (nrow(likes) == 0) {
+    return(seed)
+  }
+  likes$seed[1]
+}
+
+compose_pngs <- function(left_file, right_file, outfile) {
+  magick <- Sys.which("magick")
+  if (magick == "") {
+    warning("ImageMagick 'magick' was not found; skipping combined figure: ", outfile)
+    return(FALSE)
+  }
+  status <- system2(magick, c(left_file, right_file, "+append", outfile))
+  identical(status, 0L) || identical(status, 0)
+}
+
+plot_admixture_evaladmix <- function(k, seed = 1, suffix = paste0("seed", seed)) {
+  seed <- resolve_best_seed(k, seed, suffix)
+
+  admix_suffix <- if (suffix == "best") "best" else NULL
+  admix_file <- file.path(
+    figures_dir,
+    if (is.null(admix_suffix)) sprintf("admixture_k%s.png", k) else sprintf("admixture_k%s_%s.png", k, admix_suffix)
+  )
+  eval_file <- file.path(figures_dir, sprintf("evaladmix_k%s_%s.png", k, suffix))
+  outfile <- file.path(figures_dir, sprintf("admixture_evaladmix_k%s_%s.png", k, suffix))
+
+  if (!file.exists(admix_file) && !plot_admixture_q(k, seed = seed, suffix = admix_suffix)) {
+    return(FALSE)
+  }
+  if (!file.exists(eval_file) && !plot_evaladmix(k, seed = seed, suffix = suffix)) {
+    return(FALSE)
+  }
+
+  compose_pngs(admix_file, eval_file, outfile)
+}
+
+plot_admixture_q <- function(k, seed = 1, suffix = NULL) {
   q_file <- file.path(results_dir, sprintf("example.pcaone_pruned.K%s.seed%s.Q", k, seed))
   if (!file.exists(q_file)) {
     return(FALSE)
@@ -199,7 +245,11 @@ plot_admixture_q <- function(k, seed = 1) {
   pop <- fam[, 1]
   ord <- orderInds(pop = as.vector(pop), q = q)
 
-  png(file.path(figures_dir, sprintf("admixture_k%s.png", k)), width = 1400, height = 700, res = 160)
+  outfile <- file.path(
+    figures_dir,
+    if (is.null(suffix)) sprintf("admixture_k%s.png", k) else sprintf("admixture_k%s_%s.png", k, suffix)
+  )
+  png(outfile, width = 1400, height = 700, res = 160)
   par(mar = c(5, 7, 4, 2))
   plotAdmix(q, ord = ord, pop = pop, cex.lab = 0.65)
   dev.off()
@@ -210,6 +260,8 @@ plot_admixture_q(as.integer(Sys.getenv("K", "3")), as.integer(Sys.getenv("SEED",
 invisible(lapply(2:5, plot_admixture_q, seed = 1))
 invisible(lapply(2:5, plot_evaladmix, seed = 1))
 invisible(lapply(2:5, function(k) plot_evaladmix(k, seed = 1, suffix = "best")))
+invisible(lapply(2:5, plot_admixture_evaladmix, seed = 1))
+invisible(lapply(2:5, function(k) plot_admixture_evaladmix(k, seed = 1, suffix = "best")))
 
 plot_loglikelihoods(file.path(figures_dir, "admixture_convergence.png"))
 

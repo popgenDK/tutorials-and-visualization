@@ -113,7 +113,7 @@ if [ "${FORCE}" = 1 ] || [ ! -s "${QOUT}" ] || [ ! -s "${POUT}" ]
 then
   START=$(date +%s)
   software/dist/admixture_linux-1.3.0/admixture -s 1 results/example.pcaone_pruned.bed 3 \
-    | tee results/admixture.K3.seed1.log
+    > results/admixture.K3.seed1.log
 
   mv example.pcaone_pruned.3.Q "${QOUT}"
   mv example.pcaone_pruned.3.P "${POUT}"

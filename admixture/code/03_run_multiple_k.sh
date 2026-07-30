@@ -25,7 +25,7 @@ do
   else
     START=$(date +%s)
     software/dist/admixture_linux-1.3.0/admixture -s 1 results/example.pcaone_pruned.bed "${K}" \
-      | tee "results/admixture.K${K}.seed1.log"
+      > "results/admixture.K${K}.seed1.log"
 
     mv "example.pcaone_pruned.${K}.Q" "${QOUT}"
     mv "example.pcaone_pruned.${K}.P" "${POUT}"
