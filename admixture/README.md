@@ -45,13 +45,12 @@ mkdir -p data results figures software
 Download the data if they are not already present:
 
 ```bash
-for EXT in bed bim fam
-do
-  if [ ! -s "data/example.${EXT}" ]
-  then
-    wget -nc -P data "${DATA_URL}/example.${EXT}"
-  fi
-done
+if [ ! -s data/example.bed ]
+then
+  wget -nc -P data "${DATA_URL}/example.bed"
+  wget -nc -P data "${DATA_URL}/example.bim"
+  wget -nc -P data "${DATA_URL}/example.fam"
+fi
 ```
 
 <details>
@@ -158,18 +157,7 @@ total elapsed wall time: 118.371 seconds
 
 </details>
 
-For visualization, use `results/example.pcaone_plot.eigvecs2`, not the raw eigenvector matrix. PCAone's `eigvecs2` file is the plotting-friendly output with sample IDs and PC columns. The same PCAone prefix also stores the loadings used below for HWE correction.
-
-The first five PCs are the meaningful axes in this example. To use only those PCs for HWE correction without rerunning PCAone, make a five-PC `--USV` prefix from the ten-PC output:
-
-```bash
-awk 'BEGIN {OFS="\t"} {print $1, $2, $3, $4, $5}' \
-  results/example.pcaone_plot.eigvecs > results/example.pcaone_hwe.eigvecs
-awk 'BEGIN {OFS="\t"} {print $1, $2, $3, $4, $5}' \
-  results/example.pcaone_plot.loadings > results/example.pcaone_hwe.loadings
-awk 'NR <= 6 {print}' results/example.pcaone_plot.sigvals > results/example.pcaone_hwe.sigvals
-awk '{print}' results/example.pcaone_plot.mbim > results/example.pcaone_hwe.mbim
-```
+For visualization, use `results/example.pcaone_plot.eigvecs2`, not the raw eigenvector matrix. PCAone's `eigvecs2` file is the plotting-friendly output with sample IDs and PC columns.
 
 The PCA plot below was made directly from `results/example.pcaone_plot.eigvecs2`.
 
@@ -223,7 +211,7 @@ dev.off()
 
 ![PCAone top 10 PC pairs](figures/pcaone_top10_pc_pairs.png)
 
-Figure 1. PCAone PC plots for PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10. Points are colored by the population label in the `.fam` file. In this data set the first five PCs are meaningful, so the HWE correction and ancestry-adjusted LD pruning below use `-k 5`. Later PCs look noisier because, after the main population structure has been removed, the remaining axes describe weaker structure, within-population variation, and outliers.
+Figure 1. PCAone PC plots for PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10. Points are colored by the population label in the `.fam` file. In this data set the first five PCs are meaningful. Later PCs look noisier because, after the main population structure has been removed, the remaining axes describe weaker structure, within-population variation, and outliers.
 
 ### 3. HWE filtering and ancestry-adjusted LD pruning
 
@@ -231,7 +219,6 @@ Next use the first five meaningful PCAone PCs/loadings to test HWE while account
 
 ```bash
 software/PCAone -b results/example.qc \
-  --USV results/example.pcaone_hwe \
   -k 5 \
   --inbreed 1 \
   -o results/example.hwe
@@ -602,7 +589,7 @@ The scripts append timing information to `results/runtime.tsv`. The table below 
 | --- | ---: |
 | PLINK MAF and missingness filter | 2 |
 | PCAone top 10 PCs for plotting | 118 |
-| Make five-PC prefix for HWE correction | 0 |
+| PCAone first 5 PCs and adjusted HWE test | 21 |
 | PCAone adjusted HWE test | 21 |
 | HWE SNP-list filtering | 2 |
 | PLINK HWE-filtered data set | 2 |

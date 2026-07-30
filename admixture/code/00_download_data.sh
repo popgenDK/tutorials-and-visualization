@@ -5,10 +5,9 @@ DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/admixture
 
 mkdir -p data
 
-for EXT in bed bim fam
-do
-  if [ ! -s "data/example.${EXT}" ]
-  then
-    wget -nc -P data "${DATA_URL}/example.${EXT}"
-  fi
-done
+if [ ! -s data/example.bed ]
+then
+  wget -nc -P data "${DATA_URL}/example.bed"
+  wget -nc -P data "${DATA_URL}/example.bim"
+  wget -nc -P data "${DATA_URL}/example.fam"
+fi
