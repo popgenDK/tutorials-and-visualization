@@ -1,0 +1,15 @@
+# Large tutorial data staged locally and mirrored at:
+# https://popgen.dk/albrecht/open/tutorial_data/
+/tutorial_data/*
+!/tutorial_data/README.md
+!/tutorial_data/*/
+!/tutorial_data/*/README.md
+
+# Generated outputs
+**/results/
+**/figures/*.png
+**/figures/*.pdf
+
+# Local runtime clutter
+.DS_Store
+*.log
