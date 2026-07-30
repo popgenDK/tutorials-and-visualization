@@ -2,6 +2,7 @@ data_dir <- "data"
 results_dir <- "results"
 figures_dir <- "figures"
 dir.create(figures_dir, showWarnings = FALSE, recursive = TRUE)
+source(file.path("code", "visFuns.R"))
 
 read_pop_labels <- function(pcs) {
   fam_file <- file.path(results_dir, "example.qc.fam")
@@ -145,34 +146,39 @@ plot_evaladmix <- function(k, seed = 1, suffix = paste0("seed", seed)) {
   }
 
   r <- as.matrix(read.table(cor_file))
+  if (suffix == "best") {
+    likes_file <- file.path(results_dir, sprintf("admixture.K%s.likes", k))
+    if (file.exists(likes_file)) {
+      likes <- read.table(likes_file, col.names = c("seed", "loglikelihood"))
+      if (nrow(likes) > 0) {
+        seed <- likes$seed[1]
+      }
+    }
+  }
+  q_file <- file.path(results_dir, sprintf("example.pcaone_pruned.K%s.seed%s.Q", k, seed))
   fam_file <- file.path(results_dir, "example.pcaone_pruned.fam")
   if (!file.exists(fam_file)) {
     fam_file <- file.path(data_dir, "example.fam")
   }
-  pop <- read.table(fam_file, as.is = TRUE)[, 1]
-  ord <- order(pop)
-  r <- r[ord, ord]
-  pop <- pop[ord]
+  if (!file.exists(q_file)) {
+    return(FALSE)
+  }
 
-  pal <- colorRampPalette(c("#2166AC", "white", "#B2182B"))(101)
-  lim <- max(abs(r), na.rm = TRUE)
+  pop <- read.table(fam_file, as.is = TRUE)[, 1]
+  q <- read.table(q_file)
+  ord <- orderInds(pop = as.vector(pop), q = q)
+
   png(file.path(figures_dir, sprintf("evaladmix_k%s_%s.png", k, suffix)), width = 900, height = 800, res = 150)
-  par(mar = c(4, 4, 2, 5))
-  image(
-    seq_len(nrow(r)),
-    seq_len(ncol(r)),
-    r[nrow(r):1, ],
-    col = pal,
-    zlim = c(-lim, lim),
-    axes = FALSE,
-    xlab = "Individuals",
-    ylab = "Individuals",
-    main = sprintf("evalAdmix residual correlations, K=%s", k)
+  plotCorRes(
+    cor_mat = r,
+    pop = as.vector(pop),
+    ord = ord,
+    title = sprintf("evalAdmix residual correlations, K=%s", k),
+    max_z = 0.2,
+    min_z = -0.2,
+    cex.lab = 0.8,
+    cex.legend = 1
   )
-  axis(1, at = tapply(seq_along(pop), pop, mean), labels = names(table(pop)), las = 2, cex.axis = 0.75)
-  axis(2, at = nrow(r) - tapply(seq_along(pop), pop, mean) + 1, labels = names(table(pop)), las = 2, cex.axis = 0.75)
-  abline(v = cumsum(table(pop)) + 0.5, col = "grey30", lwd = 0.8)
-  abline(h = nrow(r) - cumsum(table(pop)) + 0.5, col = "grey30", lwd = 0.8)
   dev.off()
   TRUE
 }
@@ -191,20 +197,11 @@ plot_admixture_q <- function(k, seed = 1) {
   fam <- read.table(fam_file, as.is = TRUE)
 
   pop <- fam[, 1]
-  ord <- order(pop, q[, 1])
+  ord <- orderInds(pop = as.vector(pop), q = q)
 
-  png(file.path(figures_dir, sprintf("admixture_k%s.png", k)), width = 1400, height = 500, res = 160)
-  par(mar = c(5, 4, 1, 1))
-  barplot(
-    t(q)[, ord],
-    col = seq_len(ncol(q)) + 1,
-    space = 0,
-    border = NA,
-    xlab = "Individuals",
-    ylab = "Ancestry proportion"
-  )
-  text(sort(tapply(seq_len(nrow(fam)), pop[ord], mean)), -0.05, unique(pop[ord]), xpd = TRUE)
-  abline(v = cumsum(sapply(unique(pop[ord]), function(x) sum(pop[ord] == x))), col = 1, lwd = 1.2)
+  png(file.path(figures_dir, sprintf("admixture_k%s.png", k)), width = 1400, height = 700, res = 160)
+  par(mar = c(5, 7, 4, 2))
+  plotAdmix(q, ord = ord, pop = pop, cex.lab = 0.65)
   dev.off()
   TRUE
 }

@@ -43,11 +43,16 @@ then
   record_time "pcaone_plot_10pcs" "${START}"
 fi
 
-if [ "${FORCE}" = 1 ] || [ ! -s results/example.pcaone_hwe.eigvecs ]
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.pcaone_hwe.loadings ]
 then
   START=$(date +%s)
-  software/PCAone -b results/example.qc -k 5 -V -o results/example.pcaone_hwe
-  record_time "pcaone_hwe_5pcs" "${START}"
+  awk 'BEGIN {OFS="\t"} {print $1, $2, $3, $4, $5}' \
+    results/example.pcaone_plot.eigvecs > results/example.pcaone_hwe.eigvecs
+  awk 'BEGIN {OFS="\t"} {print $1, $2, $3, $4, $5}' \
+    results/example.pcaone_plot.loadings > results/example.pcaone_hwe.loadings
+  awk 'NR <= 6 {print}' results/example.pcaone_plot.sigvals > results/example.pcaone_hwe.sigvals
+  awk '{print}' results/example.pcaone_plot.mbim > results/example.pcaone_hwe.mbim
+  record_time "pcaone_make_5pc_prefix" "${START}"
 fi
 
 if [ "${FORCE}" = 1 ] || [ ! -s results/example.hwe.hwe ]

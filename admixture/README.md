@@ -45,16 +45,13 @@ mkdir -p data results figures software
 Download the data if they are not already present:
 
 ```bash
-bash code/00_download_data.sh
-```
-
-After installing the software in the folded section below, the complete tutorial can be run with:
-
-```bash
-bash code/01_run_admixture.sh
-bash code/03_run_multiple_k.sh
-bash code/04_run_multiple_seeds.sh
-Rscript code/02_plot_admixture.R
+for EXT in bed bim fam
+do
+  if [ ! -s "data/example.${EXT}" ]
+  then
+    wget -nc -P data "${DATA_URL}/example.${EXT}"
+  fi
+done
 ```
 
 <details>
@@ -105,8 +102,6 @@ software/PCAone --help >/dev/null || true
 software/evalAdmix/evalAdmix 2>&1 | head
 ```
 
-The same commands are collected in `code/00_install_software.sh`.
-
 </details>
 
 ## Prepare input
@@ -146,8 +141,6 @@ First run PCAone and save the top 10 PCs and SNP loadings. The PCs are later plo
 
 ```bash
 software/PCAone -b results/example.qc -k 10 -V -o results/example.pcaone_plot
-
-software/PCAone -b results/example.qc -k 5 -V -o results/example.pcaone_hwe
 ```
 
 <details>
@@ -165,7 +158,18 @@ total elapsed wall time: 118.371 seconds
 
 </details>
 
-For visualization, use `results/example.pcaone_plot.eigvecs2`, not the raw eigenvector matrix. PCAone's `eigvecs2` file is the plotting-friendly output with sample IDs and PC columns. The separate `results/example.pcaone_hwe` prefix stores the first five PCs used below for HWE correction.
+For visualization, use `results/example.pcaone_plot.eigvecs2`, not the raw eigenvector matrix. PCAone's `eigvecs2` file is the plotting-friendly output with sample IDs and PC columns. The same PCAone prefix also stores the loadings used below for HWE correction.
+
+The first five PCs are the meaningful axes in this example. To use only those PCs for HWE correction without rerunning PCAone, make a five-PC `--USV` prefix from the ten-PC output:
+
+```bash
+awk 'BEGIN {OFS="\t"} {print $1, $2, $3, $4, $5}' \
+  results/example.pcaone_plot.eigvecs > results/example.pcaone_hwe.eigvecs
+awk 'BEGIN {OFS="\t"} {print $1, $2, $3, $4, $5}' \
+  results/example.pcaone_plot.loadings > results/example.pcaone_hwe.loadings
+awk 'NR <= 6 {print}' results/example.pcaone_plot.sigvals > results/example.pcaone_hwe.sigvals
+awk '{print}' results/example.pcaone_plot.mbim > results/example.pcaone_hwe.mbim
+```
 
 The PCA plot below was made directly from `results/example.pcaone_plot.eigvecs2`.
 
@@ -318,11 +322,45 @@ software/evalAdmix/evalAdmix \
   -P 4
 ```
 
-Plot the single-K result:
+Plot the single-K result. The residual heatmap uses the evalAdmix plotting functions from `code/visFuns.R`.
 
-```bash
-Rscript code/02_plot_admixture.R
+<details>
+<summary>R code used to plot ADMIXTURE K=3 and evalAdmix K=3</summary>
+
+```r
+source(file.path("code", "visFuns.R"))
+
+results_dir <- "results"
+figures_dir <- "figures"
+dir.create(figures_dir, showWarnings = FALSE, recursive = TRUE)
+
+fam <- read.table(file.path(results_dir, "example.pcaone_pruned.fam"), as.is = TRUE)
+pop <- fam[, 1]
+
+q <- read.table(file.path(results_dir, "example.pcaone_pruned.K3.seed1.Q"))
+ord <- orderInds(pop = as.vector(pop), q = q)
+
+png(file.path(figures_dir, "admixture_k3.png"), width = 1400, height = 700, res = 160)
+par(mar = c(5, 7, 4, 2))
+plotAdmix(q, ord = ord, pop = pop, cex.lab = 0.65)
+dev.off()
+
+r <- as.matrix(read.table(file.path(results_dir, "evaladmix.K3.seed1.corres")))
+png(file.path(figures_dir, "evaladmix_k3_seed1.png"), width = 900, height = 800, res = 150)
+plotCorRes(
+  cor_mat = r,
+  pop = as.vector(pop),
+  ord = ord,
+  title = "evalAdmix residual correlations, K=3",
+  min_z = -0.2,
+  max_z = 0.2,
+  cex.lab = 0.8,
+  cex.legend = 1
+)
+dev.off()
 ```
+
+</details>
 
 ![ADMIXTURE K3 ancestry proportions](figures/admixture_k3.png)
 
@@ -331,8 +369,6 @@ Figure 2. ADMIXTURE ancestry barplot for `K=3`, seed 1. Each vertical bar is one
 ![evalAdmix K3 residual correlations](figures/evaladmix_k3_seed1.png)
 
 Figure 3. evalAdmix residual-correlation heatmap for `K=3`, seed 1. Residual blocks indicate structure that is not fully captured by this fitted model.
-
-The full preparation, single `K=3` ADMIXTURE run, and single evalAdmix run are collected in `code/01_run_admixture.sh`.
 
 ### 2. Run and visualize multiple K values
 
@@ -356,12 +392,45 @@ do
 done
 ```
 
-The same commands are collected in `code/03_run_multiple_k.sh`.
+Plot the ADMIXTURE and evalAdmix output for each K. The evalAdmix residual plots use `plotCorRes()` from `code/visFuns.R`.
 
-```bash
-bash code/03_run_multiple_k.sh
-Rscript code/02_plot_admixture.R
+<details>
+<summary>R code used to plot multiple K values</summary>
+
+```r
+source(file.path("code", "visFuns.R"))
+
+results_dir <- "results"
+figures_dir <- "figures"
+fam <- read.table(file.path(results_dir, "example.pcaone_pruned.fam"), as.is = TRUE)
+pop <- fam[, 1]
+
+for (K in 2:5) {
+  q <- read.table(file.path(results_dir, sprintf("example.pcaone_pruned.K%s.seed1.Q", K)))
+  ord <- orderInds(pop = as.vector(pop), q = q)
+
+  png(file.path(figures_dir, sprintf("admixture_k%s.png", K)), width = 1400, height = 700, res = 160)
+  par(mar = c(5, 7, 4, 2))
+  plotAdmix(q, ord = ord, pop = pop, cex.lab = 0.65)
+  dev.off()
+
+  r <- as.matrix(read.table(file.path(results_dir, sprintf("evaladmix.K%s.seed1.corres", K))))
+  png(file.path(figures_dir, sprintf("evaladmix_k%s_seed1.png", K)), width = 900, height = 800, res = 150)
+  plotCorRes(
+    cor_mat = r,
+    pop = as.vector(pop),
+    ord = ord,
+    title = sprintf("evalAdmix residual correlations, K=%s", K),
+    min_z = -0.2,
+    max_z = 0.2,
+    cex.lab = 0.8,
+    cex.legend = 1
+  )
+  dev.off()
+}
 ```
+
+</details>
 
 ![ADMIXTURE K2 ancestry proportions](figures/admixture_k2.png)
 
@@ -388,8 +457,45 @@ Figure 5. evalAdmix residual-correlation heatmaps for `K=2..5`, seed 1. Compare 
 Different seeds can converge to different optima, especially for larger `K`. The script records final loglikelihoods and stops a K value once the top three runs are within 5 likelihood units. It then runs evalAdmix on the best seed for each K.
 
 ```bash
-bash code/04_run_multiple_seeds.sh
-Rscript code/02_plot_admixture.R
+MAX_SEEDS=${MAX_SEEDS:-10}
+
+for K in 2 3 4 5
+do
+  LIKE_FILE="results/admixture.K${K}.likes"
+  : > "${LIKE_FILE}"
+
+  for SEED in $(seq 1 "${MAX_SEEDS}")
+  do
+    QOUT="results/example.pcaone_pruned.K${K}.seed${SEED}.Q"
+    POUT="results/example.pcaone_pruned.K${K}.seed${SEED}.P"
+    LOG="results/admixture.K${K}.seed${SEED}.log"
+
+    software/dist/admixture_linux-1.3.0/admixture -s "${SEED}" \
+      results/example.pcaone_pruned.bed "${K}" | tee "${LOG}"
+
+    mv "example.pcaone_pruned.${K}.Q" "${QOUT}"
+    mv "example.pcaone_pruned.${K}.P" "${POUT}"
+
+    LOG_LIK=$(awk '/^Loglikelihood:/ {ll=$2} END {print ll}' "${LOG}")
+    awk -v seed="${SEED}" -v ll="${LOG_LIK}" '$1 != seed {print} END {print seed, ll}' \
+      "${LIKE_FILE}" 2>/dev/null | sort -k2,2nr > "${LIKE_FILE}.tmp"
+    mv "${LIKE_FILE}.tmp" "${LIKE_FILE}"
+
+    CONV=$(awk 'NR == 1 {best=$2} best - $2 < 5 {n++} END {print n + 0}' "${LIKE_FILE}")
+    if [ "${CONV}" -ge 3 ]
+    then
+      break
+    fi
+  done
+
+  BEST_SEED=$(awk 'NR == 1 {print $1}' "${LIKE_FILE}")
+  software/evalAdmix/evalAdmix \
+    -plink results/example.pcaone_pruned \
+    -fname "results/example.pcaone_pruned.K${K}.seed${BEST_SEED}.P" \
+    -qname "results/example.pcaone_pruned.K${K}.seed${BEST_SEED}.Q" \
+    -o "results/evaladmix.K${K}.best.corres" \
+    -P 4
+done
 ```
 
 <details>
@@ -413,6 +519,67 @@ Writing output files.
 
 Do not choose the meaningful `K` from cross-validation error. Use convergence across seeds, ancestry plots, and evalAdmix residuals.
 
+<details>
+<summary>R code used to plot convergence and best-seed evalAdmix results</summary>
+
+```r
+source(file.path("code", "visFuns.R"))
+
+results_dir <- "results"
+figures_dir <- "figures"
+fam <- read.table(file.path(results_dir, "example.pcaone_pruned.fam"), as.is = TRUE)
+pop <- fam[, 1]
+
+likes_files <- list.files(results_dir, pattern = "^admixture\\.K[0-9]+\\.likes$", full.names = TRUE)
+conv <- do.call(rbind, lapply(likes_files, function(path) {
+  K <- as.integer(sub("^admixture\\.K([0-9]+)\\.likes$", "\\1", basename(path)))
+  x <- read.table(path, col.names = c("seed", "loglikelihood"))
+  data.frame(K = K, seed = x$seed, loglikelihood = x$loglikelihood)
+}))
+conv <- conv[order(conv$K, conv$seed), ]
+conv$delta_best <- ave(conv$loglikelihood, conv$K, FUN = function(x) x - max(x))
+
+png(file.path(figures_dir, "admixture_convergence.png"), width = 900, height = 550, res = 150)
+plot(
+  range(conv$seed),
+  range(conv$delta_best),
+  type = "n",
+  xlab = "Seed",
+  ylab = "Loglikelihood difference from best seed"
+)
+abline(h = 0, lty = 2, col = "grey60")
+cols <- setNames(c("#0072B2", "#D55E00", "#009E73", "#CC79A7"), sort(unique(conv$K)))
+for (K in sort(unique(conv$K))) {
+  x <- conv[conv$K == K, ]
+  lines(x$seed, x$delta_best, type = "b", pch = 19, col = cols[as.character(K)])
+}
+legend("bottomright", legend = paste0("K=", sort(unique(conv$K))), col = cols, pch = 19, lty = 1, bty = "n")
+dev.off()
+
+for (K in 2:5) {
+  likes <- read.table(file.path(results_dir, sprintf("admixture.K%s.likes", K)), col.names = c("seed", "loglikelihood"))
+  best_seed <- likes$seed[1]
+  q <- read.table(file.path(results_dir, sprintf("example.pcaone_pruned.K%s.seed%s.Q", K, best_seed)))
+  ord <- orderInds(pop = as.vector(pop), q = q)
+  r <- as.matrix(read.table(file.path(results_dir, sprintf("evaladmix.K%s.best.corres", K))))
+
+  png(file.path(figures_dir, sprintf("evaladmix_k%s_best.png", K)), width = 900, height = 800, res = 150)
+  plotCorRes(
+    cor_mat = r,
+    pop = as.vector(pop),
+    ord = ord,
+    title = sprintf("evalAdmix residual correlations, K=%s", K),
+    min_z = -0.2,
+    max_z = 0.2,
+    cex.lab = 0.8,
+    cex.legend = 1
+  )
+  dev.off()
+}
+```
+
+</details>
+
 ![ADMIXTURE convergence summary](figures/admixture_convergence.png)
 
 Figure 6. Convergence summary across seeds and K values from `results/admixture.K*.likes`. Each point shows the final loglikelihood difference from the best seed for that `K`; values near zero indicate repeated convergence to the same optimum.
@@ -435,7 +602,7 @@ The scripts append timing information to `results/runtime.tsv`. The table below 
 | --- | ---: |
 | PLINK MAF and missingness filter | 2 |
 | PCAone top 10 PCs for plotting | 118 |
-| PCAone first 5 PCs for HWE and LD correction | 82 |
+| Make five-PC prefix for HWE correction | 0 |
 | PCAone adjusted HWE test | 21 |
 | HWE SNP-list filtering | 2 |
 | PLINK HWE-filtered data set | 2 |
