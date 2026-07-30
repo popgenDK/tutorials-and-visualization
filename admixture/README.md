@@ -427,60 +427,33 @@ Writing output files.
 
 ### 2. Check K=3 convergence with multiple seeds
 
-After the first K=3 run, run K=3 with multiple seeds and stop when the runs have converged. This follows the logic in `multiConv_ADMIXTURE.sh`: save one loglikelihood per seed, sort likelihoods from best to worst, test whether enough runs are close to the best likelihood, and also test whether the Q matrices are visually indistinguishable.
+After the first K=3 run, run K=3 with multiple seeds and stop when the runs have converged. The repo-local `code/multiConv_ADMIXTURE.sh` script is based on the popgenDK analysis `multiConv_ADMIXTURE.sh` script, with the ADMIXTURE path and output names adjusted for this tutorial. It saves one loglikelihood per seed, sorts likelihoods from best to worst, tests whether enough runs are close to the best likelihood, and also tests whether the Q matrices are visually indistinguishable.
 
 ```bash
-K=3
-MAX_SEEDS=10
-CONV_TIMES=3
-LL_DIFF=3
-Q_DIFF=0.01
-LIKE_TMP="results/admixture.K${K}.likes.tmp"
-LIKE_FILE="results/admixture.K${K}.likes"
-QLIST="results/admixture.K${K}.Qlist"
-: > "${LIKE_TMP}"
-: > "${QLIST}"
-
-for SEED in $(seq 1 "${MAX_SEEDS}")
-do
-  QOUT="results/example.pcaone_pruned.K${K}.seed${SEED}.Q"
-  POUT="results/example.pcaone_pruned.K${K}.seed${SEED}.P"
-  LOG="results/admixture.K${K}.seed${SEED}.log"
-
-  software/dist/admixture_linux-1.3.0/admixture -s "${SEED}" \
-    results/example.pcaone_pruned.bed "${K}" > "${LOG}"
-
-  mv "example.pcaone_pruned.${K}.Q" "${QOUT}"
-  mv "example.pcaone_pruned.${K}.P" "${POUT}"
-
-  LOG_LIK=$(awk '/^Loglikelihood:/ {ll=$2} END {print ll}' "${LOG}")
-  awk -v seed="${SEED}" -v ll="${LOG_LIK}" '$1 != seed {print} END {print seed, ll}' \
-    "${LIKE_TMP}" > "${LIKE_TMP}.tmp"
-  mv "${LIKE_TMP}.tmp" "${LIKE_TMP}"
-  awk -v qout="${QOUT}" '$1 != qout {print} END {print qout}' \
-    "${QLIST}" > "${QLIST}.tmp"
-  mv "${QLIST}.tmp" "${QLIST}"
-  sort -k2,2nr "${LIKE_TMP}" > "${LIKE_FILE}"
-
-  awk '{print $2}' "${LIKE_TMP}" > "results/ll.K${K}.${SEED}.txt"
-  CONV=$(awk -v diff="${LL_DIFF}" 'NR == 1 {best=$2} best - $2 < diff {n++} END {print n + 0}' "${LIKE_FILE}")
-  CONV2=$(Rscript code/testQconv.R "results/ll.K${K}.${SEED}.txt" "${QLIST}" "${Q_DIFF}")
-  echo "K=${K} seed=${SEED} likelihood_converged=${CONV} q_converged=${CONV2}"
-  if [ "${CONV}" -gt "${CONV_TIMES}" ] || [ "${CONV2}" -gt "${CONV_TIMES}" ]
-  then
-    break
-  fi
-done
+code/multiConv_ADMIXTURE.sh results/example.pcaone_pruned 10 4 results 3 1
 ```
 
 <details>
 <summary>stdout</summary>
 
 ```text
-K=3 seed=1 likelihood_converged=1 q_converged=1
-K=3 seed=2 likelihood_converged=2 q_converged=2
-K=3 seed=3 likelihood_converged=3 q_converged=3
-K=3 seed=4 likelihood_converged=4 q_converged=4
+num = 10
+p = 4
+out = results
+K = 3
+Skipping K=3 seed=1; output already exists.
+conv 1 with chosen 3
+second criteria conv: 1 with chosen 3
+Skipping K=3 seed=2; output already exists.
+conv 2 with chosen 3
+second criteria conv: 2 with chosen 3
+Skipping K=3 seed=3; output already exists.
+conv 3 with chosen 3
+second criteria conv: 3 with chosen 3
+Skipping K=3 seed=4; output already exists.
+conv 4 with chosen 3
+second criteria conv: 4 with chosen 3
+k: 3 first conv criteria 4 second conv criteria 4
 ```
 
 </details>
@@ -690,50 +663,12 @@ Different seeds can converge to different optima, especially for larger `K`. The
 
 ```bash
 MAX_SEEDS=${MAX_SEEDS:-10}
-CONV_TIMES=3
-LL_DIFF=3
-Q_DIFF=0.01
 
 for K in 2 3 4 5
 do
-  LIKE_TMP="results/admixture.K${K}.likes.tmp"
-  LIKE_FILE="results/admixture.K${K}.likes"
-  QLIST="results/admixture.K${K}.Qlist"
-  : > "${LIKE_TMP}"
-  : > "${QLIST}"
+  code/multiConv_ADMIXTURE.sh results/example.pcaone_pruned "${MAX_SEEDS}" 4 results "${K}" 1
 
-  for SEED in $(seq 1 "${MAX_SEEDS}")
-  do
-    QOUT="results/example.pcaone_pruned.K${K}.seed${SEED}.Q"
-    POUT="results/example.pcaone_pruned.K${K}.seed${SEED}.P"
-    LOG="results/admixture.K${K}.seed${SEED}.log"
-
-    software/dist/admixture_linux-1.3.0/admixture -s "${SEED}" \
-      results/example.pcaone_pruned.bed "${K}" > "${LOG}"
-
-    mv "example.pcaone_pruned.${K}.Q" "${QOUT}"
-    mv "example.pcaone_pruned.${K}.P" "${POUT}"
-
-    LOG_LIK=$(awk '/^Loglikelihood:/ {ll=$2} END {print ll}' "${LOG}")
-    awk -v seed="${SEED}" -v ll="${LOG_LIK}" '$1 != seed {print} END {print seed, ll}' \
-      "${LIKE_TMP}" > "${LIKE_TMP}.tmp"
-    mv "${LIKE_TMP}.tmp" "${LIKE_TMP}"
-    awk -v qout="${QOUT}" '$1 != qout {print} END {print qout}' \
-      "${QLIST}" > "${QLIST}.tmp"
-    mv "${QLIST}.tmp" "${QLIST}"
-    sort -k2,2nr "${LIKE_TMP}" > "${LIKE_FILE}"
-
-    awk '{print $2}' "${LIKE_TMP}" > "results/ll.K${K}.${SEED}.txt"
-    CONV=$(awk -v diff="${LL_DIFF}" 'NR == 1 {best=$2} best - $2 < diff {n++} END {print n + 0}' "${LIKE_FILE}")
-    CONV2=$(Rscript code/testQconv.R "results/ll.K${K}.${SEED}.txt" "${QLIST}" "${Q_DIFF}")
-    echo "K=${K} seed=${SEED} likelihood_converged=${CONV} q_converged=${CONV2}"
-    if [ "${CONV}" -gt "${CONV_TIMES}" ] || [ "${CONV2}" -gt "${CONV_TIMES}" ]
-    then
-      break
-    fi
-  done
-
-  BEST_SEED=$(awk 'NR == 1 {print $1}' "${LIKE_FILE}")
+  BEST_SEED=$(awk 'NR == 1 {print $1}' "results/admixture.K${K}.likes")
   software/evalAdmix/evalAdmix \
     -plink results/example.pcaone_pruned \
     -fname "results/example.pcaone_pruned.K${K}.seed${BEST_SEED}.P" \
@@ -747,22 +682,37 @@ done
 <summary>stdout</summary>
 
 ```text
-K=2 seed=1 likelihood_converged=1 q_converged=1
-K=2 seed=2 likelihood_converged=2 q_converged=2
-K=2 seed=3 likelihood_converged=3 q_converged=3
-K=2 seed=4 likelihood_converged=4 q_converged=4
-K=3 seed=1 likelihood_converged=1 q_converged=1
-K=3 seed=2 likelihood_converged=2 q_converged=2
-K=3 seed=3 likelihood_converged=3 q_converged=3
-K=3 seed=4 likelihood_converged=4 q_converged=4
-K=4 seed=1 likelihood_converged=1 q_converged=1
-K=4 seed=2 likelihood_converged=2 q_converged=2
-K=4 seed=3 likelihood_converged=3 q_converged=3
-K=4 seed=4 likelihood_converged=4 q_converged=4
-K=5 seed=1 likelihood_converged=1 q_converged=1
-K=5 seed=2 likelihood_converged=2 q_converged=2
-K=5 seed=3 likelihood_converged=3 q_converged=3
-K=5 seed=4 likelihood_converged=4 q_converged=4
+num = 10
+p = 4
+out = results
+K = 2
+conv 4 with chosen 3
+second criteria conv: 4 with chosen 3
+k: 2 first conv criteria 4 second conv criteria 4
+
+num = 10
+p = 4
+out = results
+K = 3
+conv 4 with chosen 3
+second criteria conv: 4 with chosen 3
+k: 3 first conv criteria 4 second conv criteria 4
+
+num = 10
+p = 4
+out = results
+K = 4
+conv 4 with chosen 3
+second criteria conv: 4 with chosen 3
+k: 4 first conv criteria 4 second conv criteria 4
+
+num = 10
+p = 4
+out = results
+K = 5
+conv 4 with chosen 3
+second criteria conv: 4 with chosen 3
+k: 5 first conv criteria 4 second conv criteria 4
 ```
 
 </details>
@@ -910,14 +860,14 @@ The scripts append timing information to `results/runtime.tsv`. The table below 
 | evalAdmix K=4 seed 1 | 32 |
 | ADMIXTURE K=5 seed 1 | 106 |
 | evalAdmix K=5 seed 1 | 35 |
-| Convergence ADMIXTURE K=2 seeds 1-3 | 38, 34, 38 |
+| multiConv ADMIXTURE K=2 | 27 |
 | Convergence evalAdmix K=2 best seed 1 | 25 |
-| Convergence ADMIXTURE K=3 seeds 1-3 | 57, 55, 51 |
+| multiConv ADMIXTURE K=3 | 40 |
 | Convergence evalAdmix K=3 best seed 1 | 30 |
-| Convergence ADMIXTURE K=4 seeds 1-3 | 70, 65, 68 |
-| Convergence evalAdmix K=4 best seed 3 | 31 |
-| Convergence ADMIXTURE K=5 seeds 1-3 | 107, 92, 104 |
-| Convergence evalAdmix K=5 best seed 3 | 35 |
+| multiConv ADMIXTURE K=4 | 56 |
+| Convergence evalAdmix K=4 best seed 3 | 33 |
+| multiConv ADMIXTURE K=5 | 112 |
+| Convergence evalAdmix K=5 best seed 4 | 36 |
 
 ## Explain the output
 
@@ -981,3 +931,4 @@ Compare `K` values using convergence across seeds, ancestry barplots, and evalAd
 - https://www.cog-genomics.org/plink/
 - https://github.com/Zilong-Li/PCAone
 - https://github.com/GenisGE/evalAdmix
+- https://github.com/popgenDK/analysis/blob/e4ad23eea14a308683f1c90575062843c9c46871/Admix/multiConv_ADMIXTURE.sh
