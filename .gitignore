@@ -13,6 +13,7 @@
 
 # Locally installed tutorial software
 /software/
+**/software/
 
 # Local runtime clutter
 .DS_Store

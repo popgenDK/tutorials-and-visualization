@@ -45,22 +45,15 @@ mkdir -p data results figures
 Download the data if they are not already present:
 
 ```bash
-mkdir -p data
-wget -nc -P data "${DATA_URL}/example.bed"
-wget -nc -P data "${DATA_URL}/example.bim"
-wget -nc -P data "${DATA_URL}/example.fam"
+bash code/00_download_data.sh
 ```
 
-<details>
-<summary>Example stdout</summary>
+After installing the software in the folded section below, the complete tutorial can be run with:
 
-```text
-File 'data/example.bed' already there; not retrieving.
-File 'data/example.bim' already there; not retrieving.
-File 'data/example.fam' already there; not retrieving.
+```bash
+bash code/01_run_admixture.sh
+Rscript code/02_plot_admixture.R
 ```
-
-</details>
 
 <details>
 <summary>Install software</summary>
@@ -71,35 +64,43 @@ PLINK documentation: https://www.cog-genomics.org/plink/
 
 PCAone documentation: https://github.com/Zilong-Li/PCAone
 
-Install locally under `../software/`:
+Install locally under `software/`. Each block checks whether the executable is already present before downloading anything.
 
 ```bash
-SOFTWARE_DIR=../software
-mkdir -p "${SOFTWARE_DIR}"
-cd "${SOFTWARE_DIR}"
+mkdir -p software
 
-wget -nc https://dalexander.github.io/admixture/binaries/admixture_linux-1.3.0.tar.gz
-tar -xzf admixture_linux-1.3.0.tar.gz
+if [ ! -x software/dist/admixture_linux-1.3.0/admixture ]
+then
+  curl -L https://dalexander.github.io/admixture/binaries/admixture_linux-1.3.0.tar.gz \
+    -o software/admixture_linux-1.3.0.tar.gz
+  tar -xzf software/admixture_linux-1.3.0.tar.gz -C software
+fi
 
-wget -nc https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20241022.zip
-unzip -n plink_linux_x86_64_20241022.zip -d plink
+if [ ! -x software/plink/plink ]
+then
+  curl -L https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20241022.zip \
+    -o software/plink_linux_x86_64_20241022.zip
+  unzip -n software/plink_linux_x86_64_20241022.zip -d software/plink
+fi
 
-wget -nc https://github.com/Zilong-Li/PCAone/releases/latest/download/PCAone-Linux.zip
-unzip -n PCAone-Linux.zip
-chmod +x PCAone
+if [ ! -x software/PCAone ]
+then
+  curl -L https://github.com/Zilong-Li/PCAone/releases/latest/download/PCAone-Linux.zip \
+    -o software/PCAone-Linux.zip
+  unzip -n software/PCAone-Linux.zip -d software
+  chmod +x software/PCAone
+fi
 
-cd -
-export PATH="$(pwd)/${SOFTWARE_DIR}/admixture_linux-1.3.0:$(pwd)/${SOFTWARE_DIR}/plink:$(pwd)/${SOFTWARE_DIR}:${PATH}"
+ADMIXTURE=software/dist/admixture_linux-1.3.0/admixture
+PLINK=software/plink/plink
+PCAONE=software/PCAone
 
-which admixture
-admixture --help | head
-
-which plink
-plink --help | head
-
-which PCAone
-PCAone --help | head
+"${ADMIXTURE}" --help >/dev/null || true
+"${PLINK}" --help >/dev/null || true
+"${PCAONE}" --help >/dev/null || true
 ```
+
+The same commands are collected in `code/00_install_software.sh`.
 
 </details>
 
@@ -112,7 +113,9 @@ First inspect the input data and apply simple genotype filters. The MAF cutoff r
 ```bash
 mkdir -p results
 
-plink --bfile data/example \
+PLINK=software/plink/plink
+
+"${PLINK}" --bfile data/example \
   --maf 0.05 \
   --geno 0.01 \
   --make-bed \
@@ -141,23 +144,22 @@ This data set has population structure, so we do not use PLINK for LD pruning. S
 First run PCAone and save the top 10 PCs and SNP loadings. The PCs are later plotted to show whether the sample labels match the major axes of structure.
 
 ```bash
-PCAone -b results/example.qc -k 10 -V -o results/example.pcaone
+PCAONE=software/PCAone
+
+"${PCAONE}" -b results/example.qc -k 10 -V -o results/example.pcaone
 ```
 
 <details>
 <summary>Example stdout</summary>
 
 ```text
-PCA All In One (PCAone)
-Input PLINK prefix: results/example.qc
-Number of samples: 120
-Number of SNPs: 6676750
-Number of PCs: 10
-Output: results/example.pcaone.eigvals
-Output: results/example.pcaone.eigvecs
-Output: results/example.pcaone.eigvecs2
-Output: results/example.pcaone.loadings
-Output: results/example.pcaone.mbim
+PCAone (v0.6.0)
+N (# samples): 120, M (# SNPs): 6676750
+running of epoch =  6, diff = 1.19257e-05
+stops at epoch =  7
+eigen vectors and values saved
+PCAone - Randomized SVD done
+total elapsed wall time: 118.371 seconds
 ```
 
 </details>
@@ -179,7 +181,7 @@ Figure 1. PCAone PC plots for PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, an
 Next use the PCAone PCs/loadings to test HWE while accounting for population structure. The `.hwe` file contains one row per SNP, including an HWE P value and inbreeding coefficient. Here we keep SNPs with HWE P value at least `1e-6`; this threshold also depends on the data set and study design.
 
 ```bash
-PCAone -b results/example.qc \
+"${PCAONE}" -b results/example.qc \
   --USV results/example.pcaone \
   -k 10 \
   --inbreed 1 \
@@ -191,9 +193,9 @@ awk 'NR > 1 && $2 >= 1e-6 {print $1}' results/example.hwe.hwe > results/example.
 Now compute ancestry-adjusted LD and prune SNPs with `r2 > 0.2` within 1 Mb. PCAone writes `results/example.adjld.ld.prune.in`, the SNPs retained after adjusted-LD pruning.
 
 ```bash
-PCAone -b results/example.qc -k 10 --ld -o results/example.adjld
+"${PCAONE}" -b results/example.qc -k 10 --ld -o results/example.adjld
 
-PCAone -B results/example.adjld.residuals \
+"${PCAONE}" -B results/example.adjld.residuals \
   --match-bim results/example.adjld.mbim \
   --ld-r2 0.2 \
   --ld-bp 1000000 \
@@ -203,9 +205,11 @@ PCAone -B results/example.adjld.residuals \
 Finally, intersect the HWE-passing SNPs with the PCAone LD-pruned SNPs and create the PLINK data set used by ADMIXTURE.
 
 ```bash
-grep -Fxf results/example.adjld.ld.prune.in results/example.hwe.keep > results/example.keep.snps
+awk '{print $2}' results/example.adjld.ld.prune.in > results/example.adjld.ld.prune.ids
 
-plink --bfile results/example.qc \
+grep -Fxf results/example.adjld.ld.prune.ids results/example.hwe.keep > results/example.keep.snps
+
+"${PLINK}" --bfile results/example.qc \
   --extract results/example.keep.snps \
   --make-bed \
   --out results/example.pcaone_pruned
@@ -216,25 +220,26 @@ plink --bfile results/example.qc \
 
 ```text
 PCAone --inbreed 1
-Input PLINK prefix: results/example.qc
-Number of samples: 120
-Number of SNPs: 6676750
+N (# samples): 120, M (# SNPs): 6676750
+run inbreeding coefficient estimator
+EM inbreeding coefficient coverged
+compute the LRT test
 Output: results/example.hwe.hwe
-The number of SNPs passing HWE P >= 1e-6 is written by the filtering command.
+6652351 SNPs pass HWE P >= 1e-6
 
 PCAone adjusted LD pruning
-Input PLINK prefix: results/example.qc
-Number of samples: 120
-Number of SNPs: 6676750
+shape of input matrix (features x samples) is 6676750x 120
+LD pruning, choose sites to be kept randomly or with high MAF? 1(random) : 0(high MAF). =>  0
 Output: results/example.adjld.ld.prune.in
 Output: results/example.adjld.ld.prune.out
-The number of retained SNPs is written to results/example.adjld.ld.prune.in.
-The final SNP count is the intersection of the HWE-passing and LD-pruned lists.
+265731 SNPs retained after ancestry-adjusted LD pruning
+256171 SNPs remain after intersecting the HWE and LD-pruned lists
 
 PLINK v1.9
 6676750 variants loaded from .bim file.
-120 people loaded from .fam.
---extract: final SNP count written by PLINK.
+120 people (0 males, 0 females, 120 ambiguous) loaded from .fam.
+--extract: 256171 variants remaining.
+256171 variants and 120 people pass filters and QC.
 --make-bed to results/example.pcaone_pruned.bed + results/example.pcaone_pruned.bim + results/example.pcaone_pruned.fam ... done.
 ```
 
@@ -245,18 +250,30 @@ PLINK v1.9
 Run ADMIXTURE for several values of `K` and several independent random seeds. Different seeds can converge to different optima, especially for larger `K`, so we inspect convergence before interpreting the ancestry proportions.
 
 ```bash
+ADMIXTURE=software/dist/admixture_linux-1.3.0/admixture
+
 for K in 2 3 4 5
 do
   for SEED in $(seq 1 10)
   do
-    admixture -s "${SEED}" results/example.pcaone_pruned.bed "${K}" \
+    QOUT="results/example.pcaone_pruned.K${K}.seed${SEED}.Q"
+    POUT="results/example.pcaone_pruned.K${K}.seed${SEED}.P"
+    if [ -s "${QOUT}" ] && [ -s "${POUT}" ]
+    then
+      echo "Skipping K=${K} seed=${SEED}; output already exists."
+      continue
+    fi
+
+    "${ADMIXTURE}" -s "${SEED}" results/example.pcaone_pruned.bed "${K}" \
       | tee "results/admixture.K${K}.seed${SEED}.log"
 
-    mv "example.pcaone_pruned.${K}.Q" "results/example.pcaone_pruned.K${K}.seed${SEED}.Q"
-    mv "example.pcaone_pruned.${K}.P" "results/example.pcaone_pruned.K${K}.seed${SEED}.P"
+    mv "example.pcaone_pruned.${K}.Q" "${QOUT}"
+    mv "example.pcaone_pruned.${K}.P" "${POUT}"
   done
 done
 ```
+
+The full input-preparation and ADMIXTURE workflow is also in `code/01_run_admixture.sh`. It checks for existing output files before running each step.
 
 <details>
 <summary>Example stdout</summary>
@@ -264,9 +281,14 @@ done
 ```text
 ADMIXTURE Version 1.3.0
 Random seed: 1
-Input: results/example.pcaone_pruned.bed
-K: 3
-Loglikelihood: ...
+Size of G: 120x256171
+Converged in 16 iterations (50.313 sec)
+Loglikelihood: -26251070.702720
+Fst divergences between estimated populations:
+        Pop0    Pop1
+Pop0
+Pop1    0.207
+Pop2    0.172   0.100
 Writing output files.
 ```
 
@@ -304,7 +326,7 @@ Figure 2. ADMIXTURE ancestry barplot for `K=3`. Each vertical bar is one individ
 
 ![ADMIXTURE convergence summary](figures/admixture_convergence.png)
 
-Figure 3. Convergence summary across seeds and K values. The meaningful `K` is not chosen from cross-validation error; the tutorial should compare convergence, ancestry plots, and evalAdmix residual correlations.
+Figure 3. Convergence summary across seeds and K values. Each point shows the final loglikelihood difference from the best seed for that `K`; values near zero indicate repeated convergence to the same optimum. The meaningful `K` is not chosen from cross-validation error; the tutorial should compare convergence, ancestry plots, and evalAdmix residual correlations.
 
 The full plotting code is in `code/02_plot_admixture.R`. It writes:
 

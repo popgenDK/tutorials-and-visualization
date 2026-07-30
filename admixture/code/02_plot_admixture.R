@@ -87,13 +87,63 @@ plot_draft_convergence <- function(outfile) {
   dev.off()
 }
 
+read_loglikelihoods <- function() {
+  logs <- list.files(results_dir, pattern = "^admixture\\.K[0-9]+\\.seed[0-9]+\\.log$", full.names = TRUE)
+  if (length(logs) == 0) {
+    return(NULL)
+  }
+
+  out <- lapply(logs, function(path) {
+    base <- basename(path)
+    k <- as.integer(sub("^admixture\\.K([0-9]+)\\.seed[0-9]+\\.log$", "\\1", base))
+    seed <- as.integer(sub("^admixture\\.K[0-9]+\\.seed([0-9]+)\\.log$", "\\1", base))
+    lines <- readLines(path, warn = FALSE)
+    ll_lines <- grep("^Loglikelihood:", lines, value = TRUE)
+    if (length(ll_lines) == 0) {
+      return(NULL)
+    }
+    loglik <- as.numeric(sub("^Loglikelihood:[[:space:]]*", "", tail(ll_lines, 1)))
+    data.frame(K = k, seed = seed, loglikelihood = loglik)
+  })
+  do.call(rbind, out)
+}
+
+plot_loglikelihoods <- function(outfile) {
+  conv <- read_loglikelihoods()
+  if (is.null(conv) || nrow(conv) == 0) {
+    plot_draft_convergence(outfile)
+    return(invisible(NULL))
+  }
+
+  conv <- conv[order(conv$K, conv$seed), ]
+  k_values <- sort(unique(conv$K))
+  cols <- setNames(c("#0072B2", "#D55E00", "#009E73", "#CC79A7")[seq_along(k_values)], k_values)
+  conv$delta_best <- ave(conv$loglikelihood, conv$K, FUN = function(x) x - max(x))
+
+  png(outfile, width = 900, height = 550, res = 150)
+  par(mar = c(4, 5, 1, 1))
+  plot(
+    range(conv$seed),
+    range(conv$delta_best),
+    type = "n",
+    xlab = "Seed",
+    ylab = "Loglikelihood difference from best seed"
+  )
+  abline(h = 0, lty = 2, col = "grey60")
+  for (k_i in k_values) {
+    x <- conv[conv$K == k_i, ]
+    lines(x$seed, x$delta_best, type = "b", pch = 19, col = cols[as.character(k_i)])
+  }
+  legend("bottomright", legend = paste0("K=", k_values), col = cols, pch = 19, lty = 1, bty = "n")
+  dev.off()
+}
+
 k <- Sys.getenv("K", "3")
 seed <- Sys.getenv("SEED", "1")
 q_file <- file.path(results_dir, sprintf("example.pcaone_pruned.K%s.seed%s.Q", k, seed))
 
 if (!file.exists(q_file)) {
   plot_draft_admixture(file.path(figures_dir, sprintf("admixture_k%s.png", k)))
-  plot_draft_convergence(file.path(figures_dir, "admixture_convergence.png"))
 } else {
 q <- read.table(q_file)
 
@@ -120,6 +170,8 @@ text(sort(tapply(seq_len(nrow(fam)), pop[ord], mean)), -0.05, unique(pop[ord]), 
 abline(v = cumsum(sapply(unique(pop[ord]), function(x) sum(pop[ord] == x))), col = 1, lwd = 1.2)
 dev.off()
 }
+
+plot_loglikelihoods(file.path(figures_dir, "admixture_convergence.png"))
 
 eig_file <- file.path(results_dir, "example.pcaone.eigvecs2")
 if (file.exists(eig_file)) {
