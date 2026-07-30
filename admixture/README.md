@@ -12,7 +12,7 @@ This tutorial estimates ancestry proportions from called genotypes using ADMIXTU
 
 ## Input data
 
-The final tutorial should use a PLINK binary data set staged locally under `../tutorial_data/admixture/` and mirrored publicly at:
+The final tutorial should use a PLINK binary data set downloaded into the local `data/` folder. The files are served from:
 
 ```text
 https://popgen.dk/albrecht/open/tutorial_data/admixture/
@@ -29,26 +29,19 @@ Course material to mine for commands and data choices:
 Run all commands from the `admixture/` folder.
 
 ```bash
-DATA_DIR=../tutorial_data/admixture
 DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/admixture
-RESULTS_DIR=results
-FIGURES_DIR=figures
-CODE_DIR=code
 
 THREADS=${THREADS:-4}
-mkdir -p "${DATA_DIR}" "${RESULTS_DIR}" "${FIGURES_DIR}"
-
-PLINK_PREFIX=${DATA_DIR}/example
-PRUNED_PREFIX=${RESULTS_DIR}/example.pruned
+mkdir -p data results figures
 ```
 
 Download the data if they are not already present:
 
 ```bash
-mkdir -p "${DATA_DIR}"
-wget -nc -P "${DATA_DIR}" "${DATA_URL}/example.bed"
-wget -nc -P "${DATA_DIR}" "${DATA_URL}/example.bim"
-wget -nc -P "${DATA_DIR}" "${DATA_URL}/example.fam"
+mkdir -p data
+wget -nc -P data "${DATA_URL}/example.bed"
+wget -nc -P data "${DATA_URL}/example.bim"
+wget -nc -P data "${DATA_URL}/example.fam"
 ```
 
 <details>
@@ -83,28 +76,20 @@ plink --help | head
 
 </details>
 
-## Prepare PLINK input
+## Prepare input
 
 Start by checking the input data.
 
 ```bash
-plink --bfile "${PLINK_PREFIX}" --freq --out "${RESULTS_DIR}/example.freq"
-plink --bfile "${PLINK_PREFIX}" --missing --out "${RESULTS_DIR}/example.missing"
+plink --bfile data/example --freq --out results/example.freq
+plink --bfile data/example --missing --out results/example.missing
 ```
 
-LD prune before running ADMIXTURE.
+This data set has population structure, so we do not use PLINK for LD pruning. Standard LD estimates can be confounded by ancestry differences. Instead, use PCAone for LD estimation and pruning, then use the retained SNPs for ADMIXTURE.
 
 ```bash
-plink \
-  --bfile "${PLINK_PREFIX}" \
-  --indep-pairwise 50 10 0.1 \
-  --out "${RESULTS_DIR}/example.ld"
-
-plink \
-  --bfile "${PLINK_PREFIX}" \
-  --extract "${RESULTS_DIR}/example.ld.prune.in" \
-  --make-bed \
-  --out "${PRUNED_PREFIX}"
+# Placeholder: replace with the PCAone LD-pruning command once the example data are finalized.
+# The output should be a PLINK prefix named results/example.pcaone_pruned.
 ```
 
 ## Run ADMIXTURE
@@ -112,22 +97,29 @@ plink \
 ```bash
 for K in 2 3 4 5
 do
-  admixture --cv "${PRUNED_PREFIX}.bed" "${K}" \
-    | tee "${RESULTS_DIR}/admixture.K${K}.log"
+  admixture results/example.pcaone_pruned.bed "${K}" \
+    | tee "results/admixture.K${K}.log"
 
-  mv "example.pruned.${K}.Q" "${RESULTS_DIR}/example.pruned.K${K}.Q"
-  mv "example.pruned.${K}.P" "${RESULTS_DIR}/example.pruned.K${K}.P"
+  mv "example.pcaone_pruned.${K}.Q" "results/example.pcaone_pruned.K${K}.Q"
+  mv "example.pcaone_pruned.${K}.P" "results/example.pcaone_pruned.K${K}.P"
 done
 ```
 
-Extract cross-validation errors:
+Run several seeds for each `K` in the final tutorial and compare the log likelihoods. Do not choose the meaningful `K` from cross-validation error. Use convergence across seeds, ancestry plots, and evalAdmix residuals.
 
-```bash
-grep -h "CV error" "${RESULTS_DIR}"/admixture.K*.log \
-  > "${RESULTS_DIR}/admixture.cv_errors.txt"
-```
+## Explain the output
 
-## Make figures
+ADMIXTURE writes ancestry proportions and component-specific allele frequencies.
+
+| File | What it contains | Used for |
+| --- | --- | --- |
+| `results/example.pcaone_pruned.K3.Q` | One row per individual and one column per ancestry component. | Ancestry barplot |
+| `results/example.pcaone_pruned.K3.P` | Allele-frequency estimates for each ancestry component. | Model parameters |
+| `results/admixture.K3.log` | Runtime information and likelihood messages. | Checking whether runs behaved as expected |
+
+The `.Q` file gives the ancestry barplot. The `.log` files should be inspected across independent seeds before interpreting a run.
+
+## Visualizations
 
 Run the plotting script:
 
@@ -135,20 +127,24 @@ Run the plotting script:
 Rscript code/02_plot_admixture.R
 ```
 
-![ADMIXTURE K3 ancestry proportions](figures/admixture_k3.png)
+![ADMIXTURE K3 ancestry proportions](figures/admixture_k3.svg)
 
-![ADMIXTURE cross-validation error](figures/admixture_cv.png)
+Figure 1. Draft ADMIXTURE ancestry barplot for `K=3`. Each vertical bar is one individual, and colors show inferred ancestry components. The final PNG version is generated from `results/example.pcaone_pruned.K3.Q` by `code/02_plot_admixture.R`.
+
+![ADMIXTURE convergence summary](figures/admixture_convergence.svg)
+
+Figure 2. Draft convergence summary across seeds and K values. The meaningful `K` is not chosen from cross-validation error; the tutorial should compare convergence, ancestry plots, and evalAdmix residual correlations.
 
 Save this as `code/02_plot_admixture.R` and run it from `admixture/`.
 
 ```r
-data_dir <- "../tutorial_data/admixture"
+data_dir <- "data"
 results_dir <- "results"
 figures_dir <- "figures"
 
-q <- read.table(file.path(results_dir, "example.pruned.K3.Q"))
+q <- read.table(file.path(results_dir, "example.pcaone_pruned.K3.Q"))
 
-fam_file <- file.path(results_dir, "example.pruned.fam")
+fam_file <- file.path(results_dir, "example.pcaone_pruned.fam")
 if (!file.exists(fam_file)) {
   fam_file <- file.path(data_dir, "example.fam")
 }
@@ -172,21 +168,9 @@ abline(v = cumsum(sapply(unique(pop[ord]), function(x) sum(pop[ord] == x))), col
 dev.off()
 ```
 
-Optional CV plot:
-
-```r
-cv <- readLines(file.path("results", "admixture.cv_errors.txt"))
-k <- as.integer(sub(".*K=([0-9]+).*", "\\1", cv))
-err <- as.numeric(sub(".*: ", "", cv))
-
-png(file.path("figures", "admixture_cv.png"), width = 800, height = 600, res = 150)
-plot(k, err, type = "b", pch = 19, xlab = "K", ylab = "Cross-validation error")
-dev.off()
-```
-
 ## Interpret the result
 
-The tutorial should make users compare `K` values using both CV error and ancestry barplots. It should also mention that ADMIXTURE assumes called genotypes, while NGSadmix is designed for genotype likelihoods and is therefore better suited to low-depth sequencing data.
+The tutorial should make users compare `K` values using convergence across seeds, ancestry barplots, and evalAdmix residual correlations. It should also mention that ADMIXTURE assumes called genotypes, while NGSadmix is designed for genotype likelihoods and is therefore better suited to low-depth sequencing data.
 
 ## Sources
 

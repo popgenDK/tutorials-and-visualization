@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DATA_DIR=../tutorial_data/ngsadmix
 RESULTS_DIR=results
 THREADS=${THREADS:-4}
 
 mkdir -p "${RESULTS_DIR}"
 
-BEAGLE=${DATA_DIR}/1000G5pops.inputgl.beagle.gz
+BEAGLE=data/1000G5pops.inputgl.beagle.gz
 K=${K:-3}
 SEEDS=${SEEDS:-20}
 

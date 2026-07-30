@@ -15,8 +15,8 @@ This starter tutorial assumes the NGSadmix tutorial produced:
 
 - `../ngsadmix/results/1000G5pops.ngsadmix.K3.seed3.qopt`
 - `../ngsadmix/results/1000G5pops.ngsadmix.K3.seed3.fopt.gz`
-- `../tutorial_data/ngsadmix/1000G5pops.inputgl.beagle.gz`
-- `../tutorial_data/ngsadmix/1000G5pops.pop.info`
+- `../ngsadmix/data/1000G5pops.inputgl.beagle.gz`
+- `../ngsadmix/data/1000G5pops.pop.info`
 
 Relevant course source:
 
@@ -27,28 +27,23 @@ Relevant course source:
 Run all commands from the `evaladmix/` folder. If using outputs from `ngsadmix/`, point `NGSADMIX_DIR` at that folder.
 
 ```bash
-DATA_DIR=../tutorial_data/ngsadmix
 DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/ngsadmix
-NGSADMIX_RESULTS_DIR=../ngsadmix/results
-RESULTS_DIR=results
-FIGURES_DIR=figures
-CODE_DIR=code
 
 THREADS=${THREADS:-4}
-mkdir -p "${RESULTS_DIR}" "${FIGURES_DIR}"
+mkdir -p data results figures
 
-BEAGLE=${DATA_DIR}/1000G5pops.inputgl.beagle.gz
-POPINFO=${DATA_DIR}/1000G5pops.pop.info
-QOPT=${NGSADMIX_RESULTS_DIR}/1000G5pops.ngsadmix.K3.seed3.qopt
-FOPT=${NGSADMIX_RESULTS_DIR}/1000G5pops.ngsadmix.K3.seed3.fopt.gz
+BEAGLE=../ngsadmix/data/1000G5pops.inputgl.beagle.gz
+POPINFO=../ngsadmix/data/1000G5pops.pop.info
+QOPT=../ngsadmix/results/1000G5pops.ngsadmix.K3.seed3.qopt
+FOPT=../ngsadmix/results/1000G5pops.ngsadmix.K3.seed3.fopt.gz
 ```
 
 Download the shared NGSadmix data if they are not already present:
 
 ```bash
-mkdir -p "${DATA_DIR}"
-wget -nc -P "${DATA_DIR}" "${DATA_URL}/1000G5pops.inputgl.beagle.gz"
-wget -nc -P "${DATA_DIR}" "${DATA_URL}/1000G5pops.pop.info"
+mkdir -p ../ngsadmix/data
+wget -nc -P ../ngsadmix/data "${DATA_URL}/1000G5pops.inputgl.beagle.gz"
+wget -nc -P ../ngsadmix/data "${DATA_URL}/1000G5pops.pop.info"
 ```
 
 <details>
@@ -85,11 +80,21 @@ evalAdmix \
   -beagle "${BEAGLE}" \
   -fname "${FOPT}" \
   -qname "${QOPT}" \
-  -o "${RESULTS_DIR}/1000G5pops.K3.seed3.corres" \
+  -o "results/1000G5pops.K3.seed3.corres" \
   -P "${THREADS}"
 ```
 
-## Make figures
+## Explain the output
+
+evalAdmix writes a residual-correlation matrix.
+
+| File | What it contains | Used for |
+| --- | --- | --- |
+| `results/1000G5pops.K3.seed3.corres` | Pairwise correlation of residuals between individuals after fitting the ancestry model. | Residual heatmap and model checking |
+
+Positive residual correlation means two individuals are more genetically similar than expected under the fitted model. Blocks of residual correlation often indicate structure that is not captured by the chosen `K` or by the reference populations.
+
+## Visualizations
 
 Run the plotting script:
 
@@ -97,14 +102,16 @@ Run the plotting script:
 Rscript code/02_plot_evaladmix.R
 ```
 
-![evalAdmix residual correlation plot](figures/evaladmix_k3_residuals.png)
+![evalAdmix residual correlation plot](figures/evaladmix_k3_residuals.svg)
+
+Figure 1. Draft evalAdmix residual-correlation heatmap. Red and blue blocks mark pairs of individuals that are more or less similar than expected under the fitted model. The final PNG version is generated from `results/1000G5pops.K3.seed3.corres` by `code/02_plot_evaladmix.R`.
 
 Save this as `code/02_plot_evaladmix.R` and run it from `evaladmix/`.
 
 ```r
 source("https://raw.githubusercontent.com/GenisGE/evalAdmix/master/visFuns.R")
 
-data_dir <- "../tutorial_data/ngsadmix"
+data_dir <- "../ngsadmix/data"
 ngsadmix_results_dir <- "../ngsadmix/results"
 results_dir <- "results"
 figures_dir <- "figures"

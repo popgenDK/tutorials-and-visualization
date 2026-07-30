@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="360" viewBox="0 0 700 360" role="img" aria-labelledby="title desc">
+  <title id="title">NGSadmix convergence across seeds</title>
+  <desc id="desc">Draft line plot of log likelihoods for independent seeds.</desc>
+  <rect width="700" height="360" fill="#fff"/>
+  <line x1="70" y1="300" x2="650" y2="300" stroke="#222"/>
+  <line x1="70" y1="50" x2="70" y2="300" stroke="#222"/>
+  <text x="360" y="338" font-family="Arial, sans-serif" font-size="15" text-anchor="middle">Independent seed</text>
+  <text x="22" y="180" font-family="Arial, sans-serif" font-size="15" transform="rotate(-90 22 180)" text-anchor="middle">Log likelihood</text>
+  <polyline fill="none" stroke="#4C78A8" stroke-width="3" points="90,260 150,120 210,116 270,118 330,115 390,121 450,116 510,117 570,119 630,116"/>
+  <g fill="#4C78A8">
+    <circle cx="90" cy="260" r="5"/><circle cx="150" cy="120" r="5"/><circle cx="210" cy="116" r="5"/><circle cx="270" cy="118" r="5"/><circle cx="330" cy="115" r="5"/><circle cx="390" cy="121" r="5"/><circle cx="450" cy="116" r="5"/><circle cx="510" cy="117" r="5"/><circle cx="570" cy="119" r="5"/><circle cx="630" cy="116" r="5"/>
+  </g>
+  <text x="390" y="95" font-family="Arial, sans-serif" font-size="14">Most seeds reach similar likelihood</text>
+  <text x="112" y="253" font-family="Arial, sans-serif" font-size="14">possible local optimum</text>
+</svg>

@@ -1,6 +1,6 @@
 source("https://raw.githubusercontent.com/GenisGE/evalAdmix/master/visFuns.R")
 
-data_dir <- "../tutorial_data/ngsadmix"
+data_dir <- "../ngsadmix/data"
 ngsadmix_results_dir <- "../ngsadmix/results"
 results_dir <- "results"
 figures_dir <- "figures"

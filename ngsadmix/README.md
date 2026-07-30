@@ -11,7 +11,7 @@ This tutorial estimates ancestry proportions from genotype likelihoods using NGS
 
 ## Input data
 
-The course tutorials use low-depth 1000 Genomes data from ASW, CEU, CHB, YRI, and MXL. For this repository, large input files should be staged locally under `../tutorial_data/ngsadmix/` and mirrored publicly at:
+The course tutorials use low-depth 1000 Genomes data from ASW, CEU, CHB, YRI, and MXL. Download the tutorial data into the local `data/` folder. The files are served from:
 
 ```text
 https://popgen.dk/albrecht/open/tutorial_data/ngsadmix/
@@ -27,25 +27,21 @@ Relevant course sources:
 Run all commands from the `ngsadmix/` folder.
 
 ```bash
-DATA_DIR=../tutorial_data/ngsadmix
 DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/ngsadmix
-RESULTS_DIR=results
-FIGURES_DIR=figures
-CODE_DIR=code
 
 THREADS=${THREADS:-4}
-mkdir -p "${DATA_DIR}" "${RESULTS_DIR}" "${FIGURES_DIR}"
+mkdir -p data results figures
 
-BEAGLE=${DATA_DIR}/1000G5pops.inputgl.beagle.gz
-POPINFO=${DATA_DIR}/1000G5pops.pop.info
+BEAGLE=data/1000G5pops.inputgl.beagle.gz
+POPINFO=data/1000G5pops.pop.info
 ```
 
 Download the data if they are not already present:
 
 ```bash
-mkdir -p "${DATA_DIR}"
-wget -nc -P "${DATA_DIR}" "${DATA_URL}/1000G5pops.inputgl.beagle.gz"
-wget -nc -P "${DATA_DIR}" "${DATA_URL}/1000G5pops.pop.info"
+mkdir -p data
+wget -nc -P data "${DATA_URL}/1000G5pops.inputgl.beagle.gz"
+wget -nc -P data "${DATA_URL}/1000G5pops.pop.info"
 ```
 
 <details>
@@ -109,7 +105,7 @@ do
     -P "${THREADS}" \
     -minMaf 0.05 \
     -seed "${SEED}" \
-    -o "${RESULTS_DIR}/1000G5pops.ngsadmix.K${K}.seed${SEED}"
+    -o "results/1000G5pops.ngsadmix.K${K}.seed${SEED}"
 done
 ```
 
@@ -117,19 +113,32 @@ done
 
 ```bash
 K=3
-rm -f "${RESULTS_DIR}/ngsadmix.K${K}.likes"
+rm -f "results/ngsadmix.K${K}.likes"
 
 for SEED in $(seq 1 20)
 do
-  grep "best like" "${RESULTS_DIR}/1000G5pops.ngsadmix.K${K}.seed${SEED}.log" \
+  grep "best like" "results/1000G5pops.ngsadmix.K${K}.seed${SEED}.log" \
     | awk -v seed="${SEED}" '{print seed, $NF}' \
-    >> "${RESULTS_DIR}/ngsadmix.K${K}.likes"
+    >> "results/ngsadmix.K${K}.likes"
 done
 
-sort -k2,2gr "${RESULTS_DIR}/ngsadmix.K${K}.likes"
+sort -k2,2gr "results/ngsadmix.K${K}.likes"
 ```
 
-## Make figures
+## Explain the output
+
+NGSadmix writes three main output files for each run.
+
+| File | What it contains | Used for |
+| --- | --- | --- |
+| `results/1000G5pops.ngsadmix.K3.seed3.qopt` | One row per individual and one column per ancestry component. Rows are in the same order as the input samples. | Ancestry barplot |
+| `results/1000G5pops.ngsadmix.K3.seed3.fopt.gz` | Allele-frequency estimates for each site and ancestry component. | Model parameters and evalAdmix |
+| `results/1000G5pops.ngsadmix.K3.seed3.log` | Runtime information, likelihood, and convergence messages. | Choosing the best run among seeds |
+| `results/ngsadmix.K3.likes` | Log likelihood summary across seeds. | Convergence check |
+
+The `.qopt` file is the file most people inspect first, but the log likelihoods across seeds should be checked before interpreting the ancestry plot.
+
+## Visualizations
 
 Run the plotting script:
 
@@ -137,14 +146,20 @@ Run the plotting script:
 Rscript code/02_plot_ngsadmix.R
 ```
 
-![NGSadmix K3 ancestry proportions](figures/ngsadmix_k3.png)
+![NGSadmix K3 ancestry proportions](figures/ngsadmix_k3.svg)
+
+Figure 1. Draft NGSadmix ancestry barplot for `K=3`. Each vertical bar is one individual, and colors show inferred ancestry components. The final PNG version is generated from `results/1000G5pops.ngsadmix.K3.seed3.qopt` by `code/02_plot_ngsadmix.R`.
+
+![NGSadmix convergence across seeds](figures/ngsadmix_convergence.svg)
+
+Figure 2. Draft convergence summary across independent seeds. Runs with similar likelihoods likely found the same optimum; an outlying seed can indicate a local optimum and should not be used for interpretation.
 
 Save this as `code/02_plot_ngsadmix.R` and run it from `ngsadmix/`.
 
 ```r
 source("https://raw.githubusercontent.com/GenisGE/evalAdmix/master/visFuns.R")
 
-data_dir <- "../tutorial_data/ngsadmix"
+data_dir <- "data"
 results_dir <- "results"
 figures_dir <- "figures"
 

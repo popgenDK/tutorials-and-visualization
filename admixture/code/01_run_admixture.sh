@@ -1,34 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DATA_DIR=../tutorial_data/admixture
-RESULTS_DIR=results
 THREADS=${THREADS:-4}
 
-mkdir -p "${RESULTS_DIR}"
+mkdir -p results
 
-PLINK_PREFIX=${DATA_DIR}/example
-PRUNED_PREFIX=${RESULTS_DIR}/example.pruned
+PLINK_PREFIX=data/example
+PRUNED_PREFIX=results/example.pcaone_pruned
 
-plink \
-  --bfile "${PLINK_PREFIX}" \
-  --indep-pairwise 50 10 0.1 \
-  --out "${RESULTS_DIR}/example.ld"
-
-plink \
-  --bfile "${PLINK_PREFIX}" \
-  --extract "${RESULTS_DIR}/example.ld.prune.in" \
-  --make-bed \
-  --out "${PRUNED_PREFIX}"
+if [ ! -f "${PRUNED_PREFIX}.bed" ]; then
+  echo "Missing ${PRUNED_PREFIX}.bed"
+  echo "Create this PCAone-pruned PLINK data set before running ADMIXTURE."
+  exit 1
+fi
 
 for K in 2 3 4 5
 do
-  admixture -j"${THREADS}" --cv "${PRUNED_PREFIX}.bed" "${K}" \
-    | tee "${RESULTS_DIR}/admixture.K${K}.log"
+  admixture -j"${THREADS}" "${PRUNED_PREFIX}.bed" "${K}" \
+    | tee "results/admixture.K${K}.log"
 
-  mv "example.pruned.${K}.Q" "${RESULTS_DIR}/example.pruned.K${K}.Q"
-  mv "example.pruned.${K}.P" "${RESULTS_DIR}/example.pruned.K${K}.P"
+  mv "example.pcaone_pruned.${K}.Q" "results/example.pcaone_pruned.K${K}.Q"
+  mv "example.pcaone_pruned.${K}.P" "results/example.pcaone_pruned.K${K}.P"
 done
-
-grep -h "CV error" "${RESULTS_DIR}"/admixture.K*.log \
-  > "${RESULTS_DIR}/admixture.cv_errors.txt"
