@@ -8,7 +8,6 @@
 
 # Generated outputs
 **/results/
-**/figures/*.png
 **/figures/*.pdf
 
 # Locally installed tutorial software

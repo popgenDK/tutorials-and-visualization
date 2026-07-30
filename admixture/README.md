@@ -4,34 +4,40 @@ This tutorial estimates ancestry proportions from called genotypes using ADMIXTU
 
 ## Learning goals
 
-- Prepare PLINK input for ADMIXTURE.
-- LD prune genotype data before ancestry inference.
-- Run ADMIXTURE for several values of `K`.
+- Prepare called genotype data for ADMIXTURE.
+- Apply basic genotype QC with a 5% MAF cutoff and 1% missing-genotype cutoff.
+- Use PCAone to test HWE while accounting for population structure.
+- Use PCAone ancestry-adjusted LD pruning before ancestry inference.
+- Run ADMIXTURE for several values of `K` and several random seeds to check convergence.
 - Plot ancestry proportions from ADMIXTURE `Q` files.
-- Compare genotype-based ADMIXTURE output with NGSadmix-style output.
+- Visualize the top 10 PCs as PC1 vs PC2, PC3 vs PC4, and so on.
+- Use convergence checks and evalAdmix residuals, not cross-validation, to evaluate which `K` values are useful.
 
 ## Input data
 
-The final tutorial should use a PLINK binary data set downloaded into the local `data/` folder. The files are served from:
+This tutorial uses a called-genotype data set in PLINK binary format. The data set contains 434 individuals from five 1000 Genomes populations and 100,000 autosomal SNPs before filtering.
+
+| Population | Description | Individuals |
+| --- | --- | ---: |
+| ASW | African ancestry in Southwest US | 61 |
+| CEU | Utah residents with Northern/Western European ancestry | 99 |
+| CHB | Han Chinese in Beijing | 103 |
+| MXL | Mexican ancestry in Los Angeles | 63 |
+| YRI | Yoruba in Ibadan, Nigeria | 108 |
+
+Download the data into the local `data/` folder. The files are served from:
 
 ```text
 https://popgen.dk/albrecht/open/tutorial_data/admixture/
 ```
 
-Course material to mine for commands and data choices:
-
-- https://github.com/popgenDK/courses/blob/main/summer2025/exercises/Day3_Admixture_structure_bonus.ipynb
-- https://github.com/popgenDK/courses/blob/main/bgi23/Admixture.ipynb
-- https://github.com/popgenDK/courses/blob/main/chinaCourse2025/Day4_Morning_admixture_genotype.ipynb
-
-## Set paths
+## Set up folders and download data
 
 Run all commands from the `admixture/` folder.
 
 ```bash
 DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/admixture
 
-THREADS=${THREADS:-4}
 mkdir -p data results figures
 ```
 
@@ -45,11 +51,24 @@ wget -nc -P data "${DATA_URL}/example.fam"
 ```
 
 <details>
+<summary>Example stdout</summary>
+
+```text
+File 'data/example.bed' already there; not retrieving.
+File 'data/example.bim' already there; not retrieving.
+File 'data/example.fam' already there; not retrieving.
+```
+
+</details>
+
+<details>
 <summary>Install software</summary>
 
 ADMIXTURE documentation: https://dalexander.github.io/admixture/
 
 PLINK documentation: https://www.cog-genomics.org/plink/
+
+PCAone documentation: https://github.com/Zilong-Li/PCAone
 
 Install locally under `../software/`:
 
@@ -64,48 +83,149 @@ tar -xzf admixture_linux-1.3.0.tar.gz
 wget -nc https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20241022.zip
 unzip -n plink_linux_x86_64_20241022.zip -d plink
 
+wget -nc https://github.com/Zilong-Li/PCAone/releases/latest/download/PCAone-Linux.zip
+unzip -n PCAone-Linux.zip
+chmod +x PCAone
+
 cd -
-export PATH="$(pwd)/${SOFTWARE_DIR}/admixture_linux-1.3.0:$(pwd)/${SOFTWARE_DIR}/plink:${PATH}"
+export PATH="$(pwd)/${SOFTWARE_DIR}/admixture_linux-1.3.0:$(pwd)/${SOFTWARE_DIR}/plink:$(pwd)/${SOFTWARE_DIR}:${PATH}"
 
 which admixture
 admixture --help | head
 
 which plink
 plink --help | head
+
+which PCAone
+PCAone --help | head
 ```
 
 </details>
 
 ## Prepare input
 
-Start by checking the input data.
+First inspect the input data and apply simple genotype filters. The MAF cutoff removes rare variants that are not informative for this small teaching example. The missingness cutoff removes SNPs with more than 1% missing genotypes. These thresholds are reasonable here, but they are not universal; choose them based on sample size, genotyping technology, and the downstream question.
 
 ```bash
-plink --bfile data/example --freq --out results/example.freq
-plink --bfile data/example --missing --out results/example.missing
+mkdir -p results
+
+plink --bfile data/example \
+  --maf 0.05 \
+  --geno 0.01 \
+  --make-bed \
+  --out results/example.qc
 ```
 
-This data set has population structure, so we do not use PLINK for LD pruning. Standard LD estimates can be confounded by ancestry differences. Instead, use PCAone for LD estimation and pruning, then use the retained SNPs for ADMIXTURE.
+<details>
+<summary>Example stdout</summary>
+
+```text
+PLINK v1.9
+... variants loaded from .bim file.
+... people loaded from .fam.
+--geno: variants removed due to missing genotype data.
+--maf: variants removed due to minor allele frequency threshold.
+--make-bed to results/example.qc.bed + results/example.qc.bim + results/example.qc.fam ... done.
+```
+
+</details>
+
+This data set has population structure, so we do not use PLINK for LD pruning. Standard LD estimates can be confounded by ancestry differences. Instead, we use PCAone to estimate PCs, test HWE while accounting for structure, and prune using ancestry-adjusted LD.
+
+First run PCAone and save the top 10 PCs and SNP loadings. The PCs are later plotted to show whether the sample labels match the major axes of structure.
 
 ```bash
-# Placeholder: replace with the PCAone LD-pruning command once the example data are finalized.
-# The output should be a PLINK prefix named results/example.pcaone_pruned.
+PCAone -b results/example.qc -k 10 -V -o results/example.pcaone
 ```
+
+Next use the PCAone PCs/loadings to test HWE while accounting for population structure. The `.hwe` file contains one row per SNP, including an HWE P value and inbreeding coefficient. Here we keep SNPs with HWE P value at least `1e-6`; this threshold also depends on the data set and study design.
+
+```bash
+PCAone -b results/example.qc \
+  --USV results/example.pcaone \
+  -k 10 \
+  --inbreed 1 \
+  -o results/example.hwe
+
+awk 'NR > 1 && $2 >= 1e-6 {print $1}' results/example.hwe.hwe > results/example.hwe.keep
+```
+
+Now compute ancestry-adjusted LD and prune SNPs with `r2 > 0.2` within 1 Mb. PCAone writes `results/example.adjld.ld.prune.in`, the SNPs retained after adjusted-LD pruning.
+
+```bash
+PCAone -b results/example.qc -k 10 --ld -o results/example.adjld
+
+PCAone -B results/example.adjld.residuals \
+  --match-bim results/example.adjld.mbim \
+  --ld-r2 0.2 \
+  --ld-bp 1000000 \
+  -o results/example.adjld
+```
+
+Finally, intersect the HWE-passing SNPs with the PCAone LD-pruned SNPs and create the PLINK data set used by ADMIXTURE.
+
+```bash
+grep -Fxf results/example.adjld.ld.prune.in results/example.hwe.keep > results/example.keep.snps
+
+plink --bfile results/example.qc \
+  --extract results/example.keep.snps \
+  --make-bed \
+  --out results/example.pcaone_pruned
+```
+
+<details>
+<summary>Example stdout</summary>
+
+```text
+PCA All In One (PCAone)
+Input: -b results/example.qc -k 10 -V -o results/example.pcaone
+Output: results/example.pcaone.eigvals
+Output: results/example.pcaone.eigvecs2
+Output: results/example.pcaone.loadings
+
+PCAone --inbreed 1
+Output: results/example.hwe.hwe
+
+PCAone adjusted LD pruning
+Output: results/example.adjld.ld.prune.in
+Output: results/example.adjld.ld.prune.out
+```
+
+</details>
 
 ## Run ADMIXTURE
+
+Run ADMIXTURE for several values of `K` and several independent random seeds. Different seeds can converge to different optima, especially for larger `K`, so we inspect convergence before interpreting the ancestry proportions.
 
 ```bash
 for K in 2 3 4 5
 do
-  admixture results/example.pcaone_pruned.bed "${K}" \
-    | tee "results/admixture.K${K}.log"
+  for SEED in $(seq 1 10)
+  do
+    admixture -s "${SEED}" results/example.pcaone_pruned.bed "${K}" \
+      | tee "results/admixture.K${K}.seed${SEED}.log"
 
-  mv "example.pcaone_pruned.${K}.Q" "results/example.pcaone_pruned.K${K}.Q"
-  mv "example.pcaone_pruned.${K}.P" "results/example.pcaone_pruned.K${K}.P"
+    mv "example.pcaone_pruned.${K}.Q" "results/example.pcaone_pruned.K${K}.seed${SEED}.Q"
+    mv "example.pcaone_pruned.${K}.P" "results/example.pcaone_pruned.K${K}.seed${SEED}.P"
+  done
 done
 ```
 
-Run several seeds for each `K` in the final tutorial and compare the log likelihoods. Do not choose the meaningful `K` from cross-validation error. Use convergence across seeds, ancestry plots, and evalAdmix residuals.
+<details>
+<summary>Example stdout</summary>
+
+```text
+ADMIXTURE Version 1.3.0
+Random seed: 1
+Input: results/example.pcaone_pruned.bed
+K: 3
+Loglikelihood: ...
+Writing output files.
+```
+
+</details>
+
+Do not choose the meaningful `K` from cross-validation error. Use convergence across seeds, ancestry plots, and evalAdmix residuals.
 
 ## Explain the output
 
@@ -113,11 +233,15 @@ ADMIXTURE writes ancestry proportions and component-specific allele frequencies.
 
 | File | What it contains | Used for |
 | --- | --- | --- |
-| `results/example.pcaone_pruned.K3.Q` | One row per individual and one column per ancestry component. | Ancestry barplot |
-| `results/example.pcaone_pruned.K3.P` | Allele-frequency estimates for each ancestry component. | Model parameters |
-| `results/admixture.K3.log` | Runtime information and likelihood messages. | Checking whether runs behaved as expected |
+| `results/example.qc.*` | PLINK data after MAF and missingness filtering. | PCAone input |
+| `results/example.pcaone.eigvecs2` | Sample coordinates for the top 10 PCs. | PCA plots |
+| `results/example.hwe.hwe` | PCAone HWE P values and inbreeding coefficients per SNP. | HWE filtering |
+| `results/example.adjld.ld.prune.in` | SNPs retained by PCAone ancestry-adjusted LD pruning. | SNP filtering |
+| `results/example.pcaone_pruned.K3.seed1.Q` | One row per individual and one column per ancestry component. | Ancestry barplot |
+| `results/example.pcaone_pruned.K3.seed1.P` | Allele-frequency estimates for each ancestry component. | Model parameters |
+| `results/admixture.K3.seed1.log` | Runtime information and likelihood messages. | Checking convergence across seeds |
 
-The `.Q` file gives the ancestry barplot. The `.log` files should be inspected across independent seeds before interpreting a run.
+The `.Q` file gives the ancestry barplot. The `.log` files should be inspected across independent seeds before interpreting a run. The PCAone `.eigvecs2` file is used to visualize PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10.
 
 ## Visualizations
 
@@ -127,55 +251,30 @@ Run the plotting script:
 Rscript code/02_plot_admixture.R
 ```
 
-![ADMIXTURE K3 ancestry proportions](figures/admixture_k3.svg)
+![ADMIXTURE K3 ancestry proportions](figures/admixture_k3.png)
 
-Figure 1. Draft ADMIXTURE ancestry barplot for `K=3`. Each vertical bar is one individual, and colors show inferred ancestry components. The final PNG version is generated from `results/example.pcaone_pruned.K3.Q` by `code/02_plot_admixture.R`.
+Figure 1. ADMIXTURE ancestry barplot for `K=3`. Each vertical bar is one individual, and colors show inferred ancestry components. This PNG is generated from `results/example.pcaone_pruned.K3.seed1.Q` by `code/02_plot_admixture.R`.
 
-![ADMIXTURE convergence summary](figures/admixture_convergence.svg)
+![ADMIXTURE convergence summary](figures/admixture_convergence.png)
 
-Figure 2. Draft convergence summary across seeds and K values. The meaningful `K` is not chosen from cross-validation error; the tutorial should compare convergence, ancestry plots, and evalAdmix residual correlations.
+Figure 2. Convergence summary across seeds and K values. The meaningful `K` is not chosen from cross-validation error; the tutorial should compare convergence, ancestry plots, and evalAdmix residual correlations.
 
-Save this as `code/02_plot_admixture.R` and run it from `admixture/`.
+![PCAone PC pairs](figures/pcaone_top10_pc_pairs.png)
 
-```r
-data_dir <- "data"
-results_dir <- "results"
-figures_dir <- "figures"
+Figure 3. PCAone visualization of the top 10 PCs: PC1 vs PC2, PC3 vs PC4, PC5 vs PC6, PC7 vs PC8, and PC9 vs PC10. These plots show which axes capture the major population structure and help diagnose whether the data labels match the genotype structure.
 
-q <- read.table(file.path(results_dir, "example.pcaone_pruned.K3.Q"))
+The full plotting code is in `code/02_plot_admixture.R`. It writes:
 
-fam_file <- file.path(results_dir, "example.pcaone_pruned.fam")
-if (!file.exists(fam_file)) {
-  fam_file <- file.path(data_dir, "example.fam")
-}
-fam <- read.table(fam_file, as.is = TRUE)
-
-pop <- fam[, 1]
-ord <- order(pop, q[, 1])
-
-png(file.path(figures_dir, "admixture_k3.png"), width = 1400, height = 500, res = 160)
-par(mar = c(5, 4, 1, 1))
-barplot(
-  t(q)[, ord],
-  col = 2:10,
-  space = 0,
-  border = NA,
-  xlab = "Individuals",
-  ylab = "Ancestry proportion"
-)
-text(sort(tapply(seq_len(nrow(fam)), pop[ord], mean)), -0.05, unique(pop[ord]), xpd = TRUE)
-abline(v = cumsum(sapply(unique(pop[ord]), function(x) sum(pop[ord] == x))), col = 1, lwd = 1.2)
-dev.off()
-```
+- `figures/admixture_k3.png`
+- `figures/admixture_convergence.png`
+- `figures/pcaone_top10_pc_pairs.png`
 
 ## Interpret the result
 
-The tutorial should make users compare `K` values using convergence across seeds, ancestry barplots, and evalAdmix residual correlations. It should also mention that ADMIXTURE assumes called genotypes, while NGSadmix is designed for genotype likelihoods and is therefore better suited to low-depth sequencing data.
+Compare `K` values using convergence across seeds, ancestry barplots, and evalAdmix residual correlations. ADMIXTURE assumes called genotypes, while NGSadmix is designed for genotype likelihoods and is therefore better suited to low-depth sequencing data.
 
 ## Sources
 
-- https://github.com/popgenDK/courses/blob/main/summer2025/exercises/Day3_Admixture_structure_bonus.ipynb
-- https://github.com/popgenDK/courses/blob/main/bgi23/Admixture.ipynb
-- https://github.com/popgenDK/courses/blob/main/chinaCourse2025/Day4_Morning_admixture_genotype.ipynb
 - https://dalexander.github.io/admixture/
 - https://www.cog-genomics.org/plink/
+- https://github.com/Zilong-Li/PCAone
