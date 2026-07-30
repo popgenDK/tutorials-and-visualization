@@ -3,11 +3,20 @@ set -euo pipefail
 
 mkdir -p results
 
-ADMIXTURE=software/dist/admixture_linux-1.3.0/admixture
-PLINK=software/plink/plink
-PCAONE=software/PCAone
+FORCE=${FORCE:-0}
+if [ "${FORCE}" = 1 ] || [ ! -s results/runtime.tsv ]
+then
+  printf "step\tseconds\n" > results/runtime.tsv
+fi
 
-for FILE in data/example.bed data/example.bim data/example.fam "${ADMIXTURE}" "${PLINK}" "${PCAONE}"
+record_time() {
+  STEP=$1
+  START=$2
+  END=$(date +%s)
+  printf "%s\t%s\n" "${STEP}" "$((END - START))" >> results/runtime.tsv
+}
+
+for FILE in data/example.bed data/example.bim data/example.fam software/dist/admixture_linux-1.3.0/admixture software/plink/plink software/PCAone software/evalAdmix/evalAdmix
 do
   if [ ! -e "${FILE}" ]
   then
@@ -16,82 +25,117 @@ do
   fi
 done
 
-if [ ! -s results/example.qc.bed ]
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.qc.bed ]
 then
-  "${PLINK}" --bfile data/example \
+  START=$(date +%s)
+  software/plink/plink --bfile data/example \
     --maf 0.05 \
     --geno 0.01 \
     --make-bed \
     --out results/example.qc
+  record_time "plink_maf_geno_qc" "${START}"
 fi
 
-if [ ! -s results/example.pcaone.eigvecs2 ]
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.pcaone_plot.eigvecs2 ]
 then
-  "${PCAONE}" -b results/example.qc -k 10 -V -o results/example.pcaone
+  START=$(date +%s)
+  software/PCAone -b results/example.qc -k 10 -V -o results/example.pcaone_plot
+  record_time "pcaone_plot_10pcs" "${START}"
 fi
 
-if [ ! -s results/example.hwe.hwe ]
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.pcaone_hwe.eigvecs ]
 then
-  "${PCAONE}" -b results/example.qc \
-    --USV results/example.pcaone \
-    -k 10 \
+  START=$(date +%s)
+  software/PCAone -b results/example.qc -k 5 -V -o results/example.pcaone_hwe
+  record_time "pcaone_hwe_5pcs" "${START}"
+fi
+
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.hwe.hwe ]
+then
+  START=$(date +%s)
+  software/PCAone -b results/example.qc \
+    --USV results/example.pcaone_hwe \
+    -k 5 \
     --inbreed 1 \
     -o results/example.hwe
+  record_time "pcaone_hwe_test" "${START}"
 fi
 
-if [ ! -s results/example.hwe.keep ]
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.hwe.keep ]
 then
-  awk 'NR > 1 && $2 >= 1e-6 {print $1}' results/example.hwe.hwe > results/example.hwe.keep
+  START=$(date +%s)
+  awk 'NR > 1 && !($2 <= 1e-6 && ($4 <= -0.05 || $4 >= 0.05)) {print $1}' \
+    results/example.hwe.hwe > results/example.hwe.keep
+  record_time "hwe_filter_snplist" "${START}"
 fi
 
-if [ ! -s results/example.adjld.residuals ]
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.hwe_filtered.bed ]
 then
-  "${PCAONE}" -b results/example.qc -k 10 --ld -o results/example.adjld
+  START=$(date +%s)
+  software/plink/plink --bfile results/example.qc \
+    --extract results/example.hwe.keep \
+    --make-bed \
+    --out results/example.hwe_filtered
+  record_time "plink_make_hwe_filtered" "${START}"
 fi
 
-if [ ! -s results/example.adjld.ld.prune.in ]
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.adjld.residuals ]
 then
-  "${PCAONE}" -B results/example.adjld.residuals \
+  START=$(date +%s)
+  software/PCAone -b results/example.hwe_filtered -k 5 --ld -o results/example.adjld
+  record_time "pcaone_adjusted_ld_matrix" "${START}"
+fi
+
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.adjld.ld.prune.in ]
+then
+  START=$(date +%s)
+  software/PCAone -B results/example.adjld.residuals \
     --match-bim results/example.adjld.mbim \
     --ld-r2 0.2 \
     --ld-bp 1000000 \
     -o results/example.adjld
+  record_time "pcaone_ld_prune" "${START}"
 fi
 
-if [ ! -s results/example.adjld.ld.prune.ids ]
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.adjld.ld.prune.ids ]
 then
+  START=$(date +%s)
   awk '{print $2}' results/example.adjld.ld.prune.in > results/example.adjld.ld.prune.ids
+  record_time "ld_prune_extract_ids" "${START}"
 fi
 
-if [ ! -s results/example.keep.snps ]
+if [ "${FORCE}" = 1 ] || [ ! -s results/example.pcaone_pruned.bed ]
 then
-  grep -Fxf results/example.adjld.ld.prune.ids results/example.hwe.keep > results/example.keep.snps
-fi
-
-if [ ! -s results/example.pcaone_pruned.bed ]
-then
-  "${PLINK}" --bfile results/example.qc \
-    --extract results/example.keep.snps \
+  START=$(date +%s)
+  software/plink/plink --bfile results/example.hwe_filtered \
+    --extract results/example.adjld.ld.prune.ids \
     --make-bed \
     --out results/example.pcaone_pruned
+  record_time "plink_make_admixture_input" "${START}"
 fi
 
-for K in 2 3 4 5
-do
-  for SEED in $(seq 1 10)
-  do
-    QOUT="results/example.pcaone_pruned.K${K}.seed${SEED}.Q"
-    POUT="results/example.pcaone_pruned.K${K}.seed${SEED}.P"
-    if [ -s "${QOUT}" ] && [ -s "${POUT}" ]
-    then
-      echo "Skipping K=${K} seed=${SEED}; output already exists."
-      continue
-    fi
+QOUT=results/example.pcaone_pruned.K3.seed1.Q
+POUT=results/example.pcaone_pruned.K3.seed1.P
 
-    "${ADMIXTURE}" -s "${SEED}" results/example.pcaone_pruned.bed "${K}" \
-      | tee "results/admixture.K${K}.seed${SEED}.log"
+if [ "${FORCE}" = 1 ] || [ ! -s "${QOUT}" ] || [ ! -s "${POUT}" ]
+then
+  START=$(date +%s)
+  software/dist/admixture_linux-1.3.0/admixture -s 1 results/example.pcaone_pruned.bed 3 \
+    | tee results/admixture.K3.seed1.log
 
-    mv "example.pcaone_pruned.${K}.Q" "${QOUT}"
-    mv "example.pcaone_pruned.${K}.P" "${POUT}"
-  done
-done
+  mv example.pcaone_pruned.3.Q "${QOUT}"
+  mv example.pcaone_pruned.3.P "${POUT}"
+  record_time "admixture_k3_seed1" "${START}"
+fi
+
+if [ "${FORCE}" = 1 ] || [ ! -s results/evaladmix.K3.seed1.corres ]
+then
+  START=$(date +%s)
+  software/evalAdmix/evalAdmix \
+    -plink results/example.pcaone_pruned \
+    -fname results/example.pcaone_pruned.K3.seed1.P \
+    -qname results/example.pcaone_pruned.K3.seed1.Q \
+    -o results/evaladmix.K3.seed1.corres \
+    -P 4
+  record_time "evaladmix_k3_seed1" "${START}"
+fi

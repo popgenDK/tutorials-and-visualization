@@ -3,21 +3,7 @@ results_dir <- "results"
 figures_dir <- "figures"
 dir.create(figures_dir, showWarnings = FALSE, recursive = TRUE)
 
-plot_draft_admixture <- function(outfile) {
-  png(outfile, width = 1400, height = 500, res = 160)
-  par(mar = c(5, 4, 1, 1))
-  q <- rbind(
-    c(0.98, 0.01, 0.01), c(0.96, 0.02, 0.02), c(0.02, 0.96, 0.02),
-    c(0.01, 0.98, 0.01), c(0.35, 0.55, 0.10), c(0.30, 0.45, 0.25),
-    c(0.02, 0.03, 0.95), c(0.01, 0.04, 0.95)
-  )
-  pop <- c("YRI", "YRI", "CEU", "CEU", "MXL", "MXL", "CHB", "CHB")
-  barplot(t(q), col = 2:4, space = 0, border = NA, xlab = "Individuals", ylab = "Ancestry proportion")
-  text(c(1, 3, 5, 7), -0.06, c("YRI", "CEU", "MXL", "CHB"), xpd = TRUE)
-  dev.off()
-}
-
-read_pop_labels <- function(n) {
+read_pop_labels <- function(pcs) {
   fam_file <- file.path(results_dir, "example.qc.fam")
   if (!file.exists(fam_file)) {
     fam_file <- file.path(results_dir, "example.pcaone_pruned.fam")
@@ -26,12 +12,17 @@ read_pop_labels <- function(n) {
     fam_file <- file.path(data_dir, "example.fam")
   }
   if (!file.exists(fam_file)) {
-    return(rep("unknown", n))
+    return(rep("unknown", nrow(pcs)))
   }
   fam <- read.table(fam_file, as.is = TRUE)
-  pop <- fam[, 1]
-  if (length(pop) != n) {
-    return(rep("unknown", n))
+  names(fam)[1:2] <- c("#FID", "IID")
+  if (all(c("#FID", "IID") %in% names(pcs))) {
+    pop <- fam[match(pcs$IID, fam$IID), "#FID"]
+  } else {
+    pop <- fam[, "#FID"]
+  }
+  if (length(pop) != nrow(pcs) || any(is.na(pop))) {
+    return(rep("unknown", nrow(pcs)))
   }
   pop
 }
@@ -78,16 +69,23 @@ plot_pc_pairs <- function(pcs, pop, outfile) {
   dev.off()
 }
 
-plot_draft_convergence <- function(outfile) {
-  png(outfile, width = 900, height = 550, res = 150)
-  plot(1:10, c(-101, -92, -91.8, -91.7, -91.8, -91.7, -91.9, -91.8, -91.7, -91.8),
-       type = "b", pch = 19, xlab = "Seed", ylab = "Log likelihood", main = "Convergence across seeds")
-  points(1:10, c(-110, -94, -99, -93.5, -102, -93.8, -98, -93.6, -101, -94), type = "b", pch = 19, col = 2)
-  legend("bottomright", legend = c("stable K", "unstable K"), col = c(1, 2), pch = 19, lty = 1, bty = "n")
-  dev.off()
-}
-
 read_loglikelihoods <- function() {
+  likes <- list.files(results_dir, pattern = "^admixture\\.K[0-9]+\\.likes$", full.names = TRUE)
+  if (length(likes) > 0) {
+    out <- lapply(likes, function(path) {
+      k <- as.integer(sub("^admixture\\.K([0-9]+)\\.likes$", "\\1", basename(path)))
+      x <- read.table(path, col.names = c("seed", "loglikelihood"))
+      if (nrow(x) == 0) {
+        return(NULL)
+      }
+      data.frame(K = k, seed = x$seed, loglikelihood = x$loglikelihood)
+    })
+    out <- Filter(Negate(is.null), out)
+    if (length(out) > 0) {
+      return(do.call(rbind, out))
+    }
+  }
+
   logs <- list.files(results_dir, pattern = "^admixture\\.K[0-9]+\\.seed[0-9]+\\.log$", full.names = TRUE)
   if (length(logs) == 0) {
     return(NULL)
@@ -111,7 +109,6 @@ read_loglikelihoods <- function() {
 plot_loglikelihoods <- function(outfile) {
   conv <- read_loglikelihoods()
   if (is.null(conv) || nrow(conv) == 0) {
-    plot_draft_convergence(outfile)
     return(invisible(NULL))
   }
 
@@ -138,69 +135,95 @@ plot_loglikelihoods <- function(outfile) {
   dev.off()
 }
 
-k <- Sys.getenv("K", "3")
-seed <- Sys.getenv("SEED", "1")
-q_file <- file.path(results_dir, sprintf("example.pcaone_pruned.K%s.seed%s.Q", k, seed))
+plot_evaladmix <- function(k, seed = 1, suffix = paste0("seed", seed)) {
+  cor_file <- file.path(results_dir, sprintf("evaladmix.K%s.%s.corres", k, suffix))
+  if (!file.exists(cor_file) && suffix == paste0("seed", seed)) {
+    cor_file <- file.path(results_dir, sprintf("evaladmix.K%s.seed%s.corres", k, seed))
+  }
+  if (!file.exists(cor_file)) {
+    return(FALSE)
+  }
 
-if (!file.exists(q_file)) {
-  plot_draft_admixture(file.path(figures_dir, sprintf("admixture_k%s.png", k)))
-} else {
-q <- read.table(q_file)
+  r <- as.matrix(read.table(cor_file))
+  fam_file <- file.path(results_dir, "example.pcaone_pruned.fam")
+  if (!file.exists(fam_file)) {
+    fam_file <- file.path(data_dir, "example.fam")
+  }
+  pop <- read.table(fam_file, as.is = TRUE)[, 1]
+  ord <- order(pop)
+  r <- r[ord, ord]
+  pop <- pop[ord]
 
-fam_file <- file.path(results_dir, "example.pcaone_pruned.fam")
-if (!file.exists(fam_file)) {
-  fam_file <- file.path(data_dir, "example.fam")
+  pal <- colorRampPalette(c("#2166AC", "white", "#B2182B"))(101)
+  lim <- max(abs(r), na.rm = TRUE)
+  png(file.path(figures_dir, sprintf("evaladmix_k%s_%s.png", k, suffix)), width = 900, height = 800, res = 150)
+  par(mar = c(4, 4, 2, 5))
+  image(
+    seq_len(nrow(r)),
+    seq_len(ncol(r)),
+    r[nrow(r):1, ],
+    col = pal,
+    zlim = c(-lim, lim),
+    axes = FALSE,
+    xlab = "Individuals",
+    ylab = "Individuals",
+    main = sprintf("evalAdmix residual correlations, K=%s", k)
+  )
+  axis(1, at = tapply(seq_along(pop), pop, mean), labels = names(table(pop)), las = 2, cex.axis = 0.75)
+  axis(2, at = nrow(r) - tapply(seq_along(pop), pop, mean) + 1, labels = names(table(pop)), las = 2, cex.axis = 0.75)
+  abline(v = cumsum(table(pop)) + 0.5, col = "grey30", lwd = 0.8)
+  abline(h = nrow(r) - cumsum(table(pop)) + 0.5, col = "grey30", lwd = 0.8)
+  dev.off()
+  TRUE
 }
-fam <- read.table(fam_file, as.is = TRUE)
 
-pop <- fam[, 1]
-ord <- order(pop, q[, 1])
+plot_admixture_q <- function(k, seed = 1) {
+  q_file <- file.path(results_dir, sprintf("example.pcaone_pruned.K%s.seed%s.Q", k, seed))
+  if (!file.exists(q_file)) {
+    return(FALSE)
+  }
 
-png(file.path(figures_dir, sprintf("admixture_k%s.png", k)), width = 1400, height = 500, res = 160)
-par(mar = c(5, 4, 1, 1))
-barplot(
-  t(q)[, ord],
-  col = 2:10,
-  space = 0,
-  border = NA,
-  xlab = "Individuals",
-  ylab = "Ancestry proportion"
-)
-text(sort(tapply(seq_len(nrow(fam)), pop[ord], mean)), -0.05, unique(pop[ord]), xpd = TRUE)
-abline(v = cumsum(sapply(unique(pop[ord]), function(x) sum(pop[ord] == x))), col = 1, lwd = 1.2)
-dev.off()
+  q <- read.table(q_file)
+  fam_file <- file.path(results_dir, "example.pcaone_pruned.fam")
+  if (!file.exists(fam_file)) {
+    fam_file <- file.path(data_dir, "example.fam")
+  }
+  fam <- read.table(fam_file, as.is = TRUE)
+
+  pop <- fam[, 1]
+  ord <- order(pop, q[, 1])
+
+  png(file.path(figures_dir, sprintf("admixture_k%s.png", k)), width = 1400, height = 500, res = 160)
+  par(mar = c(5, 4, 1, 1))
+  barplot(
+    t(q)[, ord],
+    col = seq_len(ncol(q)) + 1,
+    space = 0,
+    border = NA,
+    xlab = "Individuals",
+    ylab = "Ancestry proportion"
+  )
+  text(sort(tapply(seq_len(nrow(fam)), pop[ord], mean)), -0.05, unique(pop[ord]), xpd = TRUE)
+  abline(v = cumsum(sapply(unique(pop[ord]), function(x) sum(pop[ord] == x))), col = 1, lwd = 1.2)
+  dev.off()
+  TRUE
 }
+
+plot_admixture_q(as.integer(Sys.getenv("K", "3")), as.integer(Sys.getenv("SEED", "1")))
+invisible(lapply(2:5, plot_admixture_q, seed = 1))
+invisible(lapply(2:5, plot_evaladmix, seed = 1))
+invisible(lapply(2:5, function(k) plot_evaladmix(k, seed = 1, suffix = "best")))
 
 plot_loglikelihoods(file.path(figures_dir, "admixture_convergence.png"))
 
-eig_file <- file.path(results_dir, "example.pcaone.eigvecs2")
+eig_file <- file.path(results_dir, "example.pcaone_plot.eigvecs2")
+if (!file.exists(eig_file)) {
+  eig_file <- file.path(results_dir, "example.pcaone.eigvecs2")
+}
 if (file.exists(eig_file)) {
   pcs <- read_pcaone_eigvecs2(eig_file)
   pc_cols <- grep("^PC[0-9]+$", names(pcs), value = TRUE)
   if (length(pc_cols) >= 10) {
-    plot_pc_pairs(pcs, read_pop_labels(nrow(pcs)), file.path(figures_dir, "pcaone_top10_pc_pairs.png"))
+    plot_pc_pairs(pcs, read_pop_labels(pcs), file.path(figures_dir, "pcaone_top10_pc_pairs.png"))
   }
-} else {
-  set.seed(1)
-  pop <- rep(c("CEU", "CHB", "FIN", "PEL", "PJL", "YRI"), each = 20)
-  centers <- matrix(
-    c(
-      -0.8, -0.6, 0.5, 0.4, -0.2, 0.2, 0.4, -0.2, -0.3, 0.2,
-      1.2, -0.2, -0.4, -0.7, 0.3, 0.1, -0.4, -0.3, 0.2, 0.4,
-      -0.7, -0.4, 0.2, 0.7, -0.1, 0.4, 0.2, -0.4, -0.2, 0.3,
-      -0.5, 1.0, 0.8, -0.4, -0.5, -0.1, 0.1, 0.5, -0.4, -0.2,
-      0.3, 0.7, -0.3, 0.3, 0.5, -0.5, -0.1, 0.2, 0.4, -0.3,
-      1.0, 0.8, -0.1, 0.4, -0.2, 0.5, 0.3, -0.5, 0.1, -0.3
-    ),
-    nrow = 6,
-    byrow = TRUE,
-    dimnames = list(c("CEU", "CHB", "FIN", "PEL", "PJL", "YRI"), paste0("PC", 1:10))
-  )
-  pcs <- data.frame(matrix(NA_real_, nrow = length(pop), ncol = 10))
-  names(pcs) <- paste0("PC", 1:10)
-  for (p in rownames(centers)) {
-    idx <- which(pop == p)
-    pcs[idx, ] <- sweep(matrix(rnorm(length(idx) * 10, sd = 0.25), nrow = length(idx)), 2, centers[p, ], "+")
-  }
-  plot_pc_pairs(pcs, pop, file.path(figures_dir, "pcaone_top10_pc_pairs.png"))
 }
