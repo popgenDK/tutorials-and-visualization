@@ -29,13 +29,11 @@ Course material to mine for commands and data choices:
 Run all commands from the `admixture/` folder.
 
 ```bash
-TUTORIAL_DIR=$(pwd)
-DATA_ROOT=${TUTORIAL_DIR}/../tutorial_data
-DATA_DIR=${DATA_ROOT}/admixture
+DATA_DIR=../tutorial_data/admixture
 DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/admixture
-RESULTS_DIR=${TUTORIAL_DIR}/results
-FIGURES_DIR=${TUTORIAL_DIR}/figures
-CODE_DIR=${TUTORIAL_DIR}/code
+RESULTS_DIR=results
+FIGURES_DIR=figures
+CODE_DIR=code
 
 THREADS=${THREADS:-4}
 mkdir -p "${DATA_DIR}" "${RESULTS_DIR}" "${FIGURES_DIR}"
@@ -44,20 +42,38 @@ PLINK_PREFIX=${DATA_DIR}/example
 PRUNED_PREFIX=${RESULTS_DIR}/example.pruned
 ```
 
+Download the data if they are not already present:
+
+```bash
+mkdir -p "${DATA_DIR}"
+wget -nc -P "${DATA_DIR}" "${DATA_URL}/example.bed"
+wget -nc -P "${DATA_DIR}" "${DATA_URL}/example.bim"
+wget -nc -P "${DATA_DIR}" "${DATA_URL}/example.fam"
+```
+
 <details>
 <summary>Install software</summary>
 
-ADMIXTURE documentation:
+ADMIXTURE documentation: https://dalexander.github.io/admixture/
 
-- https://dalexander.github.io/admixture/
+PLINK documentation: https://www.cog-genomics.org/plink/
 
-PLINK documentation:
-
-- https://www.cog-genomics.org/plink/
-
-Example checks:
+Install locally under `../software/`:
 
 ```bash
+SOFTWARE_DIR=../software
+mkdir -p "${SOFTWARE_DIR}"
+cd "${SOFTWARE_DIR}"
+
+wget -nc https://dalexander.github.io/admixture/binaries/admixture_linux-1.3.0.tar.gz
+tar -xzf admixture_linux-1.3.0.tar.gz
+
+wget -nc https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20241022.zip
+unzip -n plink_linux_x86_64_20241022.zip -d plink
+
+cd -
+export PATH="$(pwd)/${SOFTWARE_DIR}/admixture_linux-1.3.0:$(pwd)/${SOFTWARE_DIR}/plink:${PATH}"
+
 which admixture
 admixture --help | head
 
@@ -113,7 +129,15 @@ grep -h "CV error" "${RESULTS_DIR}"/admixture.K*.log \
 
 ## Make figures
 
+Run the plotting script:
+
+```bash
+Rscript code/02_plot_admixture.R
+```
+
 ![ADMIXTURE K3 ancestry proportions](figures/admixture_k3.png)
+
+![ADMIXTURE cross-validation error](figures/admixture_cv.png)
 
 Save this as `code/02_plot_admixture.R` and run it from `admixture/`.
 

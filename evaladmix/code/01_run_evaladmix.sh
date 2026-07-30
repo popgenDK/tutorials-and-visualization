@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TUTORIAL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-NGSADMIX_DIR=${TUTORIAL_DIR}/../ngsadmix
-DATA_ROOT=${TUTORIAL_DIR}/../tutorial_data
-DATA_DIR=${DATA_ROOT}/ngsadmix
-NGSADMIX_RESULTS_DIR=${NGSADMIX_DIR}/results
-RESULTS_DIR=${TUTORIAL_DIR}/results
+DATA_DIR=../tutorial_data/ngsadmix
+NGSADMIX_RESULTS_DIR=../ngsadmix/results
+RESULTS_DIR=results
 THREADS=${THREADS:-4}
 
 mkdir -p "${RESULTS_DIR}"

@@ -27,13 +27,11 @@ Relevant course sources:
 Run all commands from the `ngsadmix/` folder.
 
 ```bash
-TUTORIAL_DIR=$(pwd)
-DATA_ROOT=${TUTORIAL_DIR}/../tutorial_data
-DATA_DIR=${DATA_ROOT}/ngsadmix
+DATA_DIR=../tutorial_data/ngsadmix
 DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/ngsadmix
-RESULTS_DIR=${TUTORIAL_DIR}/results
-FIGURES_DIR=${TUTORIAL_DIR}/figures
-CODE_DIR=${TUTORIAL_DIR}/code
+RESULTS_DIR=results
+FIGURES_DIR=figures
+CODE_DIR=code
 
 THREADS=${THREADS:-4}
 mkdir -p "${DATA_DIR}" "${RESULTS_DIR}" "${FIGURES_DIR}"
@@ -42,24 +40,32 @@ BEAGLE=${DATA_DIR}/1000G5pops.inputgl.beagle.gz
 POPINFO=${DATA_DIR}/1000G5pops.pop.info
 ```
 
-Course-server path variant:
+Download the data if they are not already present:
 
 ```bash
-COURSE_DATA_DIR=/course/popgen25/admixture
-BEAGLE=${COURSE_DATA_DIR}/admixinput/1000G5pops.inputgl.beagle.gz
-POPINFO=${COURSE_DATA_DIR}/admixinput/1000G5pops.pop.info
+mkdir -p "${DATA_DIR}"
+wget -nc -P "${DATA_DIR}" "${DATA_URL}/1000G5pops.inputgl.beagle.gz"
+wget -nc -P "${DATA_DIR}" "${DATA_URL}/1000G5pops.pop.info"
 ```
 
 <details>
 <summary>Install software</summary>
 
-NGSadmix documentation:
+NGSadmix documentation: https://popgen.dk/software/index.php/NgsAdmix
 
-- https://popgen.dk/software/index.php/NgsAdmix
-
-Example checks:
+Install locally under `../software/`:
 
 ```bash
+SOFTWARE_DIR=../software
+mkdir -p "${SOFTWARE_DIR}/ngsadmix"
+cd "${SOFTWARE_DIR}/ngsadmix"
+
+wget -nc http://www.popgen.dk/software/download/NGSadmix/NGSadmix32.cpp
+g++ -O3 NGSadmix32.cpp -lz -o NGSadmix
+
+cd -
+export PATH="$(pwd)/${SOFTWARE_DIR}/ngsadmix:${PATH}"
+
 which NGSadmix
 NGSadmix 2>&1 | head
 ```
@@ -67,6 +73,13 @@ NGSadmix 2>&1 | head
 If starting from BAM files, ANGSD is also needed to generate Beagle-format genotype likelihoods:
 
 ```bash
+SOFTWARE_DIR=../software
+git clone https://github.com/ANGSD/angsd.git "${SOFTWARE_DIR}/angsd"
+cd "${SOFTWARE_DIR}/angsd"
+make
+cd -
+export PATH="$(pwd)/${SOFTWARE_DIR}/angsd:${PATH}"
+
 which angsd
 angsd --help 2>&1 | head
 ```
@@ -117,6 +130,12 @@ sort -k2,2gr "${RESULTS_DIR}/ngsadmix.K${K}.likes"
 ```
 
 ## Make figures
+
+Run the plotting script:
+
+```bash
+Rscript code/02_plot_ngsadmix.R
+```
 
 ![NGSadmix K3 ancestry proportions](figures/ngsadmix_k3.png)
 

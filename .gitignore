@@ -10,6 +10,9 @@
 **/figures/*.png
 **/figures/*.pdf
 
+# Locally installed tutorial software
+/software/
+
 # Local runtime clutter
 .DS_Store
 *.log

@@ -10,7 +10,7 @@ Use this layout for each tutorial:
 software-name/
   README.md
   code/
-    00_setup.sh
+    00_download_data.sh
     01_run_analysis.sh
     02_plot_results.R
   figures/
@@ -60,22 +60,23 @@ Every tutorial should start the runnable part by defining paths. Do not hard-cod
 Use this pattern:
 
 ```bash
-TUTORIAL_DIR=$(pwd)
-DATA_ROOT=${TUTORIAL_DIR}/../tutorial_data
-DATA_DIR=${DATA_ROOT}/software-name
+DATA_DIR=../tutorial_data/software-name
 DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/software-name
-RESULTS_DIR=${TUTORIAL_DIR}/results
-FIGURES_DIR=${TUTORIAL_DIR}/figures
-CODE_DIR=${TUTORIAL_DIR}/code
+RESULTS_DIR=results
+FIGURES_DIR=figures
+CODE_DIR=code
 
 mkdir -p "${DATA_DIR}" "${RESULTS_DIR}" "${FIGURES_DIR}"
 ```
 
-If the tutorial uses course-server data, keep it explicit:
+Each tutorial should include a download block and a matching `code/00_download_data.sh` script:
 
 ```bash
-COURSE_DATA_DIR=/course/popgen25/admixture
+mkdir -p "${DATA_DIR}"
+wget -nc -P "${DATA_DIR}" "${DATA_URL}/input-file-name"
 ```
+
+Avoid course-server-only paths in the main workflow. Mention them only in notes when they are useful for tracing where an older course exercise came from.
 
 ## Folded installation section
 
@@ -98,7 +99,7 @@ Inside the folded section, include:
 
 - Upstream URL.
 - Tested version or commit when known.
-- Conda/module/source install option when available.
+- Actual install commands, such as `git clone`, `make`, binary `wget`, or conda/module commands.
 - A short check such as `program --help` or `which program`.
 
 ## Figures and plotting code

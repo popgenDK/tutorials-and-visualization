@@ -27,16 +27,12 @@ Relevant course source:
 Run all commands from the `evaladmix/` folder. If using outputs from `ngsadmix/`, point `NGSADMIX_DIR` at that folder.
 
 ```bash
-TUTORIAL_DIR=$(pwd)
-NGSADMIX_DIR=${TUTORIAL_DIR}/../ngsadmix
-
-DATA_ROOT=${TUTORIAL_DIR}/../tutorial_data
-DATA_DIR=${DATA_ROOT}/ngsadmix
+DATA_DIR=../tutorial_data/ngsadmix
 DATA_URL=https://popgen.dk/albrecht/open/tutorial_data/ngsadmix
-NGSADMIX_RESULTS_DIR=${NGSADMIX_DIR}/results
-RESULTS_DIR=${TUTORIAL_DIR}/results
-FIGURES_DIR=${TUTORIAL_DIR}/figures
-CODE_DIR=${TUTORIAL_DIR}/code
+NGSADMIX_RESULTS_DIR=../ngsadmix/results
+RESULTS_DIR=results
+FIGURES_DIR=figures
+CODE_DIR=code
 
 THREADS=${THREADS:-4}
 mkdir -p "${RESULTS_DIR}" "${FIGURES_DIR}"
@@ -47,16 +43,29 @@ QOPT=${NGSADMIX_RESULTS_DIR}/1000G5pops.ngsadmix.K3.seed3.qopt
 FOPT=${NGSADMIX_RESULTS_DIR}/1000G5pops.ngsadmix.K3.seed3.fopt.gz
 ```
 
+Download the shared NGSadmix data if they are not already present:
+
+```bash
+mkdir -p "${DATA_DIR}"
+wget -nc -P "${DATA_DIR}" "${DATA_URL}/1000G5pops.inputgl.beagle.gz"
+wget -nc -P "${DATA_DIR}" "${DATA_URL}/1000G5pops.pop.info"
+```
+
 <details>
 <summary>Install software</summary>
 
-evalAdmix repository:
+evalAdmix repository: https://github.com/GenisGE/evalAdmix
 
-- https://github.com/GenisGE/evalAdmix
-
-Example checks:
+Install locally under `../software/`:
 
 ```bash
+SOFTWARE_DIR=../software
+git clone https://github.com/GenisGE/evalAdmix.git "${SOFTWARE_DIR}/evalAdmix"
+cd "${SOFTWARE_DIR}/evalAdmix"
+make
+cd -
+export PATH="$(pwd)/${SOFTWARE_DIR}/evalAdmix:${PATH}"
+
 which evalAdmix
 evalAdmix 2>&1 | head
 ```
@@ -76,11 +85,17 @@ evalAdmix \
   -beagle "${BEAGLE}" \
   -fname "${FOPT}" \
   -qname "${QOPT}" \
-  -o "${RESULTS_DIR}/1000G5pops.K3.corres" \
+  -o "${RESULTS_DIR}/1000G5pops.K3.seed3.corres" \
   -P "${THREADS}"
 ```
 
 ## Make figures
+
+Run the plotting script:
+
+```bash
+Rscript code/02_plot_evaladmix.R
+```
 
 ![evalAdmix residual correlation plot](figures/evaladmix_k3_residuals.png)
 
@@ -96,7 +111,7 @@ figures_dir <- "figures"
 
 pop <- read.table(file.path(data_dir, "1000G5pops.pop.info"), as.is = TRUE)
 q <- read.table(file.path(ngsadmix_results_dir, "1000G5pops.ngsadmix.K3.seed3.qopt"))
-r <- as.matrix(read.table(file.path(results_dir, "1000G5pops.K3.corres")))
+r <- as.matrix(read.table(file.path(results_dir, "1000G5pops.K3.seed3.corres")))
 
 ord <- orderInds(pop = pop[, 1], q = q)
 
